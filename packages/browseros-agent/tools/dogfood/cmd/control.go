@@ -364,6 +364,7 @@ func formatStatus(data any) string {
 			intValue(ports["Extension"]),
 		)
 	}
+	writeStringField(&out, "BrowserOS dir", status["browseros_dir"])
 	writeStringField(&out, "Logs", status["log_path"])
 	return out.String()
 }

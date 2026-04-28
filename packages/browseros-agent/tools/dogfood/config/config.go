@@ -30,6 +30,7 @@ type Config struct {
 	SourceProfileDir  string        `yaml:"source_profile_dir"`
 	DevUserDataDir    string        `yaml:"dev_user_data_dir"`
 	DevProfileDir     string        `yaml:"dev_profile_dir"`
+	BrowserOSDir      string        `yaml:"browseros_dir"`
 	Ports             Ports         `yaml:"ports"`
 	ProductionEnv     ProductionEnv `yaml:"production_env"`
 }
@@ -62,6 +63,7 @@ func Defaults(home string) Config {
 		SourceProfileDir:  "Default",
 		DevUserDataDir:    filepath.Join(DefaultConfigDir(home), "profile"),
 		DevProfileDir:     "Default",
+		BrowserOSDir:      filepath.Join(home, ".browseros-dogfood"),
 		Ports:             Ports{CDP: 9015, Server: 9115, Extension: 9315},
 		ProductionEnv:     DefaultProductionEnv(),
 	}
@@ -101,6 +103,7 @@ func (c *Config) Resolve() {
 	c.RepoPath = ExpandTilde(c.RepoPath, home)
 	c.SourceUserDataDir = ExpandTilde(c.SourceUserDataDir, home)
 	c.DevUserDataDir = ExpandTilde(c.DevUserDataDir, home)
+	c.BrowserOSDir = ExpandTilde(c.BrowserOSDir, home)
 	c.BrowserOSAppPath = ExpandTilde(c.BrowserOSAppPath, home)
 	if c.DevProfileDir == "" {
 		c.DevProfileDir = "Default"
@@ -149,6 +152,9 @@ func (c Config) Validate() error {
 	}
 	if c.DevUserDataDir == "" || c.DevProfileDir == "" {
 		return fmt.Errorf("dev_user_data_dir and dev_profile_dir are required")
+	}
+	if c.BrowserOSDir == "" {
+		return fmt.Errorf("browseros_dir is required")
 	}
 	if fspath.IsSameOrChild(c.DevUserDataDir, c.SourceUserDataDir) {
 		return fmt.Errorf("dev_user_data_dir must not equal or live inside source_user_data_dir")

@@ -20,6 +20,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.DevUserDataDir != filepath.Join(home, ".config/browseros-dogfood/profile") {
 		t.Fatalf("unexpected dev dir: %s", cfg.DevUserDataDir)
 	}
+	if cfg.BrowserOSDir != filepath.Join(home, ".browseros-dogfood") {
+		t.Fatalf("unexpected BrowserOS dir: %s", cfg.BrowserOSDir)
+	}
 	if cfg.LogDir() != filepath.Join(home, ".config/browseros-dogfood/profile/logs") {
 		t.Fatalf("unexpected log dir: %s", cfg.LogDir())
 	}
@@ -62,6 +65,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		SourceProfileDir:  "Profile 25",
 		DevUserDataDir:    "/dev",
 		DevProfileDir:     "Default",
+		BrowserOSDir:      "/browseros-dogfood",
 		Ports:             Ports{CDP: 9015, Server: 9115, Extension: 9315},
 		ProductionEnv: ProductionEnv{
 			Server: map[string]string{"NODE_ENV": "production"},
@@ -81,6 +85,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got.Ports.Server != 9115 {
 		t.Fatalf("server port mismatch: %d", got.Ports.Server)
+	}
+	if got.BrowserOSDir != cfg.BrowserOSDir {
+		t.Fatalf("BrowserOS dir mismatch: %q", got.BrowserOSDir)
 	}
 	if got.ProductionEnv.CLI["R2_BUCKET"] != "browseros" {
 		t.Fatalf("production env mismatch: %#v", got.ProductionEnv)
@@ -103,6 +110,7 @@ func TestValidateRejectsSourceInsideDev(t *testing.T) {
 		SourceProfileDir:  "Default",
 		DevUserDataDir:    "/tmp/source/dev",
 		DevProfileDir:     "Default",
+		BrowserOSDir:      "/tmp/browseros-dogfood",
 		Ports:             Ports{CDP: 9015, Server: 9115, Extension: 9315},
 	}
 	if err := cfg.Validate(); err == nil {
@@ -153,9 +161,39 @@ func TestValidateRepoShape(t *testing.T) {
 		SourceProfileDir:  "Default",
 		DevUserDataDir:    "/tmp/dev",
 		DevProfileDir:     "Default",
+		BrowserOSDir:      "/tmp/browseros-dogfood",
 		Ports:             Ports{CDP: 9015, Server: 9115, Extension: 9315},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("validate: %v", err)
+	}
+}
+
+func TestResolveExpandsBrowserOSDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := Config{BrowserOSDir: "~/.browseros-dogfood"}
+
+	cfg.Resolve()
+
+	want := filepath.Join(home, ".browseros-dogfood")
+	if cfg.BrowserOSDir != want {
+		t.Fatalf("expanded BrowserOS dir got %q want %q", cfg.BrowserOSDir, want)
+	}
+}
+
+func TestValidateRequiresBrowserOSDir(t *testing.T) {
+	cfg := Config{
+		RepoPath:          t.TempDir(),
+		BrowserOSAppPath:  "/bin/sh",
+		SourceUserDataDir: "/tmp/source",
+		SourceProfileDir:  "Default",
+		DevUserDataDir:    "/tmp/dev",
+		DevProfileDir:     "Default",
+		Ports:             Ports{CDP: 9015, Server: 9115, Extension: 9315},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected missing BrowserOS dir to fail validation")
 	}
 }

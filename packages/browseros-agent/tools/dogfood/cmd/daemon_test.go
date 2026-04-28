@@ -36,6 +36,20 @@ func TestDaemonArgsIncludeHeadlessWhenRequested(t *testing.T) {
 	}
 }
 
+func TestDaemonStatusIncludesBrowserOSDir(t *testing.T) {
+	d := &dogfoodDaemon{
+		state:        "running",
+		startedAt:    time.Now(),
+		browserOSDir: "/tmp/browseros-dogfood",
+	}
+
+	got := d.status()
+
+	if got.BrowserOSDir != "/tmp/browseros-dogfood" {
+		t.Fatalf("BrowserOS dir got %q", got.BrowserOSDir)
+	}
+}
+
 func TestLogLifecycleWritesDaemonRunlogEntry(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "daemon.jsonl")
 	writer, err := runlog.NewWriter(path)

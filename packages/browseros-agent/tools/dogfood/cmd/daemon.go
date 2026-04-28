@@ -229,23 +229,25 @@ type dogfoodDaemon struct {
 	opMu sync.Mutex
 	mu   sync.RWMutex
 
-	env       *environment
-	state     string
-	operation string
-	lastError string
-	ports     config.Ports
-	startedAt time.Time
-	headless  bool
+	env          *environment
+	state        string
+	operation    string
+	lastError    string
+	ports        config.Ports
+	startedAt    time.Time
+	headless     bool
+	browserOSDir string
 }
 
 type daemonStatus struct {
-	State     string       `json:"state"`
-	Operation string       `json:"operation,omitempty"`
-	LastError string       `json:"last_error,omitempty"`
-	PID       int          `json:"pid"`
-	Uptime    string       `json:"uptime"`
-	Ports     config.Ports `json:"ports"`
-	LogPath   string       `json:"log_path"`
+	State        string       `json:"state"`
+	Operation    string       `json:"operation,omitempty"`
+	LastError    string       `json:"last_error,omitempty"`
+	PID          int          `json:"pid"`
+	Uptime       string       `json:"uptime"`
+	Ports        config.Ports `json:"ports"`
+	BrowserOSDir string       `json:"browseros_dir"`
+	LogPath      string       `json:"log_path"`
 }
 
 type healthResponse struct {
@@ -280,14 +282,15 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	d := &dogfoodDaemon{
-		ctx:       ctx,
-		cancel:    cancel,
-		paths:     paths,
-		logWriter: logWriter,
-		state:     "starting",
-		startedAt: time.Now(),
-		headless:  daemonHeadless,
-		ports:     cfg.Ports,
+		ctx:          ctx,
+		cancel:       cancel,
+		paths:        paths,
+		logWriter:    logWriter,
+		state:        "starting",
+		startedAt:    time.Now(),
+		headless:     daemonHeadless,
+		ports:        cfg.Ports,
+		browserOSDir: cfg.BrowserOSDir,
 	}
 
 	server := ipc.NewServer(paths.Socket, d)
@@ -341,13 +344,14 @@ func (d *dogfoodDaemon) status() daemonStatus {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return daemonStatus{
-		State:     d.state,
-		Operation: d.operation,
-		LastError: d.lastError,
-		PID:       os.Getpid(),
-		Uptime:    time.Since(d.startedAt).Round(time.Second).String(),
-		Ports:     d.ports,
-		LogPath:   d.paths.Log,
+		State:        d.state,
+		Operation:    d.operation,
+		LastError:    d.lastError,
+		PID:          os.Getpid(),
+		Uptime:       time.Since(d.startedAt).Round(time.Second).String(),
+		Ports:        d.ports,
+		BrowserOSDir: d.browserOSDir,
+		LogPath:      d.paths.Log,
 	}
 }
 

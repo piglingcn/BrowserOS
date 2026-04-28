@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -238,14 +239,7 @@ func startEnvironment(parent context.Context, cfg config.Config, agentRoot strin
 		reportProgress(opts, "CDP not available, starting server anyway")
 		proc.LogMsg(proc.TagServer, proc.WarnColor.Sprint("CDP not available, starting server anyway"))
 	}
-	runtimeEnv := os.Environ()
-	runtimeEnv = append(runtimeEnv,
-		"NODE_ENV=development",
-		fmt.Sprintf("BROWSEROS_CDP_PORT=%d", cfg.Ports.CDP),
-		fmt.Sprintf("BROWSEROS_SERVER_PORT=%d", cfg.Ports.Server),
-		fmt.Sprintf("BROWSEROS_EXTENSION_PORT=%d", cfg.Ports.Extension),
-		fmt.Sprintf("VITE_BROWSEROS_SERVER_PORT=%d", cfg.Ports.Server),
-	)
+	runtimeEnv := serverRuntimeEnv(os.Environ(), cfg)
 	serverDir := filepath.Join(agentRoot, "apps/server")
 	reportProgress(opts, "starting server")
 	e.managed = append(e.managed, proc.StartManaged(ctx, &e.wg, proc.ProcConfig{
@@ -291,6 +285,24 @@ func serverCommand() []string {
 	return []string{"bun", "--env-file=.env.development", "src/index.ts"}
 }
 
+func serverRuntimeEnv(base []string, cfg config.Config) []string {
+	env := make([]string, 0, len(base)+6)
+	for _, entry := range base {
+		if strings.HasPrefix(entry, "BROWSEROS_DIR=") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env,
+		"NODE_ENV=development",
+		fmt.Sprintf("BROWSEROS_DIR=%s", cfg.BrowserOSDir),
+		fmt.Sprintf("BROWSEROS_CDP_PORT=%d", cfg.Ports.CDP),
+		fmt.Sprintf("BROWSEROS_SERVER_PORT=%d", cfg.Ports.Server),
+		fmt.Sprintf("BROWSEROS_EXTENSION_PORT=%d", cfg.Ports.Extension),
+		fmt.Sprintf("VITE_BROWSEROS_SERVER_PORT=%d", cfg.Ports.Server),
+	)
+}
+
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
@@ -302,6 +314,7 @@ func printSummary(cfg config.Config, agentRoot string) {
 	proc.LogMsgf(proc.TagInfo, "Repo: %s", cfg.RepoPath)
 	proc.LogMsgf(proc.TagInfo, "Agent root: %s", agentRoot)
 	proc.LogMsgf(proc.TagInfo, "Profile: %s", cfg.DevUserDataDir)
+	proc.LogMsgf(proc.TagInfo, "BrowserOS dir: %s", cfg.BrowserOSDir)
 	proc.LogMsgf(proc.TagInfo, "Logs: %s", cfg.LogDir())
 	proc.LogMsgf(proc.TagInfo, "Ports: CDP=%d Server=%d Extension=%d", cfg.Ports.CDP, cfg.Ports.Server, cfg.Ports.Extension)
 	fmt.Println()

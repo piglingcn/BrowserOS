@@ -8,6 +8,7 @@ Internal BrowserOS dogfooding CLI for running the current checkout against a cop
 
 - Uses the BrowserOS repo path from config, then works from `packages/browseros-agent`.
 - Copies one installed BrowserOS profile into a separate dev profile under `~/.config/browseros-dogfood/profile`.
+- Runs the local server with BrowserOS state defaulting to `~/.browseros-dogfood`.
 - Writes `apps/server/.env.production` and `apps/cli/.env.production` from config.
 - Runs the existing `tools/dev/setup.sh` setup flow.
 - Builds the WXT dev extension.
@@ -73,6 +74,12 @@ The dev profile defaults to:
 
 ```text
 ~/.config/browseros-dogfood/profile
+```
+
+The BrowserOS server state root defaults to:
+
+```text
+~/.browseros-dogfood
 ```
 
 `init` also writes the generated production env files in the configured checkout.
@@ -218,6 +225,7 @@ Important fields:
 - `source_profile_dir`: installed profile directory to copy.
 - `dev_user_data_dir`: separate dev user-data dir. Defaults to `~/.config/browseros-dogfood/profile`.
 - `dev_profile_dir`: dev profile directory. Defaults to `Default`.
+- `browseros_dir`: separate BrowserOS server state root. Defaults to `~/.browseros-dogfood`.
 - `ports`: CDP, BrowserOS server, and extension ports.
 - `production_env`: values written to `apps/server/.env.production` and `apps/cli/.env.production`.
 

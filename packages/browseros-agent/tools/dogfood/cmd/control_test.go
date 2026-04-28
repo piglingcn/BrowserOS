@@ -13,10 +13,11 @@ import (
 
 func TestFormatStatusDataUsesHumanReadableSummary(t *testing.T) {
 	got := formatStatus(map[string]any{
-		"state":    "running",
-		"pid":      float64(123),
-		"uptime":   "5s",
-		"log_path": "/tmp/browseros-dogfood/daemon.jsonl",
+		"state":         "running",
+		"pid":           float64(123),
+		"uptime":        "5s",
+		"log_path":      "/tmp/browseros-dogfood/daemon.jsonl",
+		"browseros_dir": "/tmp/browseros-dogfood",
 		"ports": map[string]any{
 			"CDP":       float64(9015),
 			"Server":    float64(9115),
@@ -28,6 +29,7 @@ func TestFormatStatusDataUsesHumanReadableSummary(t *testing.T) {
 		"PID: 123",
 		"Uptime: 5s",
 		"Ports: CDP=9015 Server=9115 Extension=9315",
+		"BrowserOS dir: /tmp/browseros-dogfood",
 		"Logs: /tmp/browseros-dogfood/daemon.jsonl",
 	} {
 		if !strings.Contains(got, want) {
