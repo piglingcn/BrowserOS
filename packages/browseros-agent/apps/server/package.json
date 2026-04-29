@@ -72,6 +72,7 @@
     }
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "0.21.0",
     "@ai-sdk/amazon-bedrock": "^4.0.62",
     "@ai-sdk/anthropic": "^3.0.46",
     "@ai-sdk/azure": "^3.0.31",

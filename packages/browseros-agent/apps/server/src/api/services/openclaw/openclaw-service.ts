@@ -17,8 +17,6 @@ import {
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
 import { getOpenClawDir } from '../../../lib/browseros-dir'
 import { logger } from '../../../lib/logger'
-import type { MonitoringChatTurn } from '../../../monitoring/types'
-import { buildToolLabel } from '../../../tools/tool-label-registry'
 import {
   type AgentLiveStatus,
   type AgentSessionState,
@@ -60,22 +58,15 @@ import {
   mergeEnvContent,
 } from './openclaw-env'
 import {
-  type OpenClawChatContentPart,
   OpenClawHttpClient,
   type OpenClawSessionHistory,
   type OpenClawSessionHistoryEvent,
 } from './openclaw-http-client'
-import {
-  type ClawEvent,
-  OpenClawJsonlReader,
-  summarizeToolActivity,
-} from './openclaw-jsonl-reader'
 import { OpenClawObserver } from './openclaw-observer'
 import {
   type ResolvedOpenClawProviderConfig,
   resolveSupportedOpenClawProvider,
 } from './openclaw-provider-map'
-import type { OpenClawStreamEvent } from './openclaw-types'
 import { allocateGatewayPort, readPersistedGatewayPort } from './runtime-state'
 
 const READY_TIMEOUT_MS = 30_000
@@ -217,24 +208,6 @@ export interface BrowserOSChatHistoryItem {
   attachments?: BrowserOSChatHistoryAttachment[]
 }
 
-export interface BrowserOSOpenClawHistoryPageResponse {
-  agentId: string
-  sessionKey: string | null
-  session: BrowserOSOpenClawSession | null
-  items: BrowserOSChatHistoryItem[]
-  page: {
-    cursor?: string
-    hasMore: boolean
-    limit: number
-  }
-}
-
-interface HistoryPageInput {
-  sessionKey?: string
-  cursor?: string
-  limit?: number
-}
-
 export function normalizeBrowserOSChatSessionKey(
   agentId: string,
   sessionKey: string,
@@ -260,276 +233,6 @@ export function normalizeBrowserOSChatSessionKey(
 
 function getOpenClawBrowserOSSessionPrefix(agentId: string): string {
   return `agent:${agentId}:openai-user:browseros:${agentId}:`
-}
-
-function toOpenClawBrowserOSSessionKey(
-  agentId: string,
-  sessionKey: string,
-): string {
-  return `${getOpenClawBrowserOSSessionPrefix(agentId)}${normalizeBrowserOSChatSessionKey(
-    agentId,
-    sessionKey,
-  )}`
-}
-
-function normalizeHistoryLimit(limit?: number): number {
-  if (limit === undefined || !Number.isFinite(limit)) return 50
-  return Math.max(1, Math.min(100, Math.trunc(limit)))
-}
-
-function classifySessionSource(key: string): OpenClawSessionSource {
-  if (key.includes(':cron:')) return 'cron'
-  if (key.includes(':hook:')) return 'hook'
-  if (key.includes('openai-user:browseros')) return 'user-chat'
-  if (key.includes('qa-channel')) return 'channel'
-  return 'other'
-}
-
-/**
- * Convert JSONL events to BrowserOS chat history items, applying the same
- * filtering rules as the old HTTP-based pipeline (filterHttpSessionHistoryMessages).
- */
-function jsonlEventsToHistoryItems(
-  events: ClawEvent[],
-  sessionKey: string,
-  source: OpenClawSessionSource,
-): BrowserOSChatHistoryItem[] {
-  const items: BrowserOSChatHistoryItem[] = []
-  let seq = 0
-
-  // Accumulate tool calls between text messages. The agent emits
-  // tool_use → tool_result pairs interspersed with assistant text. We
-  // pair them by toolCallId and attach the resulting list to the next
-  // assistant message (the one that follows the tool sequence).
-  let pendingToolCalls: BrowserOSChatHistoryToolCall[] = []
-  const pendingToolStarts = new Map<string, ClawEvent>()
-
-  // Accumulate thinking blocks across the turn — there can be multiple
-  // (e.g., think → tool → think → tool → answer). We collapse them into
-  // a single Reasoning block per assistant message so the UI shows one
-  // collapsible per turn, with duration = first thinking → final answer.
-  let pendingReasoningTexts: string[] = []
-  let pendingReasoningFirstAt: number | null = null
-
-  // Accumulate user-side attachments. The reader emits them as separate
-  // `user.attachment` events ordered immediately before the user.message
-  // they belong to (same JSONL line). We flush them onto the next user
-  // history item and reset the buffer alongside the per-turn buffers.
-  let pendingAttachments: BrowserOSChatHistoryAttachment[] = []
-
-  for (const event of events) {
-    if (event.type === 'user.attachment') {
-      if (event.attachment) {
-        pendingAttachments.push({
-          kind: event.attachment.kind,
-          mediaType: event.attachment.mediaType,
-          dataUrl: event.attachment.dataUrl,
-          name: event.attachment.name,
-        })
-      }
-      continue
-    }
-
-    if (event.type === 'agent.thinking') {
-      const text = event.content.trim()
-      if (text) pendingReasoningTexts.push(text)
-      if (pendingReasoningFirstAt == null) {
-        pendingReasoningFirstAt = event.createdAt
-      }
-      continue
-    }
-
-    if (event.type === 'agent.tool_use') {
-      if (event.toolCallId) {
-        pendingToolStarts.set(event.toolCallId, event)
-      }
-      // Keep order — record the tool call now with status pending; we'll
-      // patch the result/error/duration when the matching tool_result arrives.
-      const rawName = event.toolName ?? event.content
-      const { label, subject } = buildToolLabel(rawName, event.toolArguments)
-      pendingToolCalls.push({
-        toolCallId: event.toolCallId,
-        toolName: rawName,
-        label,
-        subject,
-        status: 'completed', // optimistic; downgraded if a failed result arrives
-        input: event.toolArguments,
-      })
-      continue
-    }
-
-    if (event.type === 'agent.tool_result') {
-      // Find the matching tool_use entry by toolCallId and patch it
-      const match = pendingToolCalls.find(
-        (t) => t.toolCallId && t.toolCallId === event.toolCallId,
-      )
-      if (match) {
-        if (event.isError) {
-          match.status = 'failed'
-          match.error = event.content
-        } else {
-          match.output = event.content
-        }
-        const start = event.toolCallId
-          ? pendingToolStarts.get(event.toolCallId)
-          : undefined
-        if (start) {
-          match.durationMs = Math.max(0, event.createdAt - start.createdAt)
-          if (event.toolCallId) pendingToolStarts.delete(event.toolCallId)
-        }
-      }
-      continue
-    }
-
-    if (event.type !== 'user.message' && event.type !== 'agent.message') {
-      continue
-    }
-
-    let text = event.content.trim()
-    // Allow user messages with no text body when attachments are present —
-    // the user can attach an image and rely on the model to describe it.
-    if (!text) {
-      if (event.type === 'user.message' && pendingAttachments.length > 0) {
-        // fall through; the empty text is acceptable when paired with media
-      } else {
-        continue
-      }
-    }
-
-    // Filter assistant heartbeats
-    if (event.type === 'agent.message' && text.startsWith('HEARTBEAT')) continue
-
-    // Filter internal reminders
-    if (
-      event.type === 'user.message' &&
-      text.includes('Handle this reminder internally')
-    ) {
-      continue
-    }
-
-    // Extract actual user text from context-replay wrappers
-    if (
-      event.type === 'user.message' &&
-      text.startsWith('[Chat messages since your last reply')
-    ) {
-      const marker = '[Current message - respond to this]'
-      const index = text.indexOf(marker)
-      if (index >= 0) {
-        text = text
-          .slice(index + marker.length)
-          .trim()
-          .replace(/^User:\s*/i, '')
-      } else {
-        // Reset all per-turn buffers — they belong to a discarded turn
-        pendingToolCalls = []
-        pendingToolStarts.clear()
-        pendingReasoningTexts = []
-        pendingReasoningFirstAt = null
-        pendingAttachments = []
-        continue
-      }
-      if (!text) continue
-    }
-
-    const item: BrowserOSChatHistoryItem = {
-      id: `${sessionKey}:${seq}`,
-      role: event.type === 'user.message' ? 'user' : 'assistant',
-      text,
-      timestamp: event.createdAt,
-      messageSeq: seq,
-      sessionKey,
-      source,
-    }
-
-    if (event.type === 'agent.message') {
-      // Pass through per-turn cost and token data
-      if (event.costUsd) item.costUsd = event.costUsd
-      if (event.tokensIn) item.tokensIn = event.tokensIn
-      if (event.tokensOut) item.tokensOut = event.tokensOut
-
-      // Attach any tool calls that happened before this assistant message
-      if (pendingToolCalls.length > 0) {
-        item.toolCalls = pendingToolCalls
-        pendingToolCalls = []
-        pendingToolStarts.clear()
-      }
-
-      // Attach accumulated thinking. Duration is from the first thinking
-      // event to the final answer — the wall-clock time the user waited
-      // through the model's reasoning loop.
-      if (pendingReasoningTexts.length > 0) {
-        const reasoning: BrowserOSChatHistoryReasoning = {
-          text: pendingReasoningTexts.join('\n\n'),
-        }
-        if (pendingReasoningFirstAt != null) {
-          reasoning.durationMs = Math.max(
-            0,
-            event.createdAt - pendingReasoningFirstAt,
-          )
-        }
-        item.reasoning = reasoning
-        pendingReasoningTexts = []
-        pendingReasoningFirstAt = null
-      }
-    } else if (event.type === 'user.message') {
-      // User messages reset all per-turn buffers — anything pending was
-      // part of an earlier turn that had no final assistant message.
-      pendingToolCalls = []
-      pendingToolStarts.clear()
-      pendingReasoningTexts = []
-      pendingReasoningFirstAt = null
-
-      // Flush accumulated attachments onto this user message.
-      if (pendingAttachments.length > 0) {
-        item.attachments = pendingAttachments
-        pendingAttachments = []
-      }
-    }
-
-    items.push(item)
-    seq++
-  }
-
-  return items
-}
-
-function sumCostFromEvents(events: ClawEvent[]): number {
-  let cost = 0
-  for (const e of events) {
-    if (e.type === 'agent.message' && e.costUsd) cost += e.costUsd
-  }
-  return cost
-}
-
-function encodeHistoryCursor(input: {
-  sessionKey: string
-  end: number
-}): string {
-  return Buffer.from(JSON.stringify(input), 'utf-8').toString('base64url')
-}
-
-function decodeHistoryCursor(
-  cursor?: string,
-): { sessionKey: string; end: number } | null {
-  if (!cursor) return null
-  try {
-    const parsed = JSON.parse(
-      Buffer.from(cursor, 'base64url').toString('utf-8'),
-    ) as {
-      sessionKey?: unknown
-      end?: unknown
-    }
-    if (typeof parsed.sessionKey !== 'string') return null
-    if (typeof parsed.end !== 'number' || !Number.isFinite(parsed.end)) {
-      return null
-    }
-    return {
-      sessionKey: parsed.sessionKey,
-      end: Math.max(0, Math.trunc(parsed.end)),
-    }
-  } catch {
-    return null
-  }
 }
 
 export interface AgentOverview {
@@ -572,16 +275,6 @@ export class OpenClawService {
   private lifecycleLock: Promise<void> = Promise.resolve()
   private clawSession = new ClawSession()
   private observer = new OpenClawObserver(this.clawSession)
-
-  private _jsonlReader: OpenClawJsonlReader | null = null
-  private get jsonlReader(): OpenClawJsonlReader {
-    if (!this._jsonlReader) {
-      this._jsonlReader = new OpenClawJsonlReader(
-        getOpenClawStateDir(this.openclawDir),
-      )
-    }
-    return this._jsonlReader
-  }
 
   constructor(config: OpenClawServiceConfig = {}) {
     this.openclawDir = getOpenClawDir()
@@ -639,6 +332,19 @@ export class OpenClawService {
 
   getPort(): number {
     return this.hostPort
+  }
+
+  /**
+   * Current gateway auth token. The token string is loaded from
+   * `gateway.auth.token` in the persisted openclaw.json during setup,
+   * with a freshly generated UUID as fallback. Exposed so the ACPx
+   * harness can pass it to spawned `openclaw acp` child processes via
+   * the documented `OPENCLAW_GATEWAY_TOKEN` env var (avoids both the
+   * `--token` process-listing leak and reliance on a token-file path
+   * that doesn't exist as a discrete file inside the container).
+   */
+  getGatewayToken(): string {
+    return this.token
   }
 
   /** Subscribe to real-time agent status changes from the ClawSession state machine. */
@@ -1044,238 +750,34 @@ export class OpenClawService {
     return this.runControlPlaneCall(() => this.cliClient.listAgents())
   }
 
-  listSessions(agentId?: string): BrowserOSOpenClawSession[] {
-    logger.debug('Listing OpenClaw sessions', { agentId })
-
-    const agentIds = agentId ? [agentId] : this.jsonlReader.listAgents()
-
-    const sessions: BrowserOSOpenClawSession[] = []
-    for (const id of agentIds) {
-      for (const entry of this.jsonlReader.listSessions(id)) {
-        sessions.push({
-          key: entry.key,
-          updatedAt: entry.updatedAt,
-          sessionId: entry.sessionId,
-          agentId: id,
-          kind: 'chat',
-          source: classifySessionSource(entry.key),
-        })
-      }
-    }
-    return sessions.sort((a, b) => b.updatedAt - a.updatedAt)
-  }
-
-  resolveAgentSession(agentId: string): BrowserOSOpenClawAgentSessionResponse {
-    const sessions = this.listSessions(agentId)
-    const session =
-      sessions.find((entry) => entry.source === 'user-chat') ??
-      sessions.find((entry) => entry.kind.toLowerCase().includes('chat')) ??
-      sessions[0] ??
-      null
-
-    if (session) {
-      return this.resolveSpecificAgentSession(agentId, session.key)
-    }
-
-    return {
-      agentId,
-      exists: false,
-      sessionKey: null,
-      session: null,
-    }
-  }
-
-  getAgentHistoryPage(
-    agentId: string,
-    input: HistoryPageInput = {},
-  ): BrowserOSOpenClawHistoryPageResponse {
-    const limit = normalizeHistoryLimit(input.limit)
-    const cursor = decodeHistoryCursor(input.cursor)
-    const resolved = cursor?.sessionKey
-      ? this.resolveSpecificAgentSession(agentId, cursor.sessionKey)
-      : input.sessionKey
-        ? this.resolveSpecificAgentSession(agentId, input.sessionKey)
-        : this.resolveAgentSession(agentId)
-
-    const session = resolved.session
-    if (!session) {
-      return {
-        agentId,
-        sessionKey: null,
-        session: null,
-        items: [],
-        page: { hasMore: false, limit },
-      }
-    }
-
-    const sessionKey =
-      resolved.sessionKey ??
-      normalizeBrowserOSChatSessionKey(agentId, session.key)
-
-    // Read JSONL directly from the host filesystem via Lima virtiofs mount
-    const events = this.jsonlReader.listBySession(agentId, session.key)
-    const items = jsonlEventsToHistoryItems(events, sessionKey, session.source)
-
-    const end = Math.min(cursor?.end ?? items.length, items.length)
-    const start = Math.max(0, end - limit)
-    const pageItems = items.slice(start, end)
-    const nextCursor =
-      start > 0 ? encodeHistoryCursor({ sessionKey, end: start }) : undefined
-
-    return {
-      agentId,
-      sessionKey,
-      session,
-      items: pageItems,
-      page: {
-        cursor: nextCursor,
-        hasMore: start > 0,
-        limit,
-      },
-    }
-  }
-
   // ── Dashboard ──────────────────────────────────────────────────────
 
+  /**
+   * Reports the live status of every agent the in-memory `ClawSession`
+   * knows about. Pre-Step-11 the dashboard also surfaced JSONL-derived
+   * stats (latest message, per-session cost, activity summary) that
+   * went away with `OpenClawJsonlReader`. Those fields are filled with
+   * null/0 placeholders until a harness-side equivalent ships;
+   * `status`/`currentTool` still reflect real-time observer state.
+   */
   getDashboard(): DashboardResponse {
-    const agentIds = this.jsonlReader.listAgents()
+    const states = this.clawSession.getAllStates()
     const agentOverviews: AgentOverview[] = []
-    let totalCostUsd = 0
-
-    for (const agentId of agentIds) {
-      const liveStatus = this.clawSession.getState(agentId)
-      const sessions = this.jsonlReader.listSessions(agentId)
-
-      if (sessions.length === 0) {
-        agentOverviews.push({
-          agentId,
-          status: liveStatus.status,
-          latestMessage: null,
-          latestMessageAt: null,
-          activitySummary: null,
-          currentTool: liveStatus.currentTool,
-          totalCostUsd: 0,
-          sessionCount: 0,
-        })
-        continue
-      }
-
-      const latestSession = sessions[0]
-      // Read the latest session's JSONL once and derive everything from
-      // the loaded events array — avoids re-reading the same file for
-      // latestAgentMessage() and getSessionStats() individually.
-      const events = this.jsonlReader.listBySession(agentId, latestSession.key)
-
-      let latestMsg: ClawEvent | undefined
-      for (let i = events.length - 1; i >= 0; i--) {
-        if (events[i]?.type === 'agent.message') {
-          latestMsg = events[i]
-          break
-        }
-      }
-
-      // Accumulate cost: derive from the already-loaded events for the
-      // latest session, read remaining sessions separately.
-      let agentCost = sumCostFromEvents(events)
-      for (let i = 1; i < sessions.length; i++) {
-        const stats = this.jsonlReader.getSessionStats(
-          agentId,
-          sessions[i]!.key,
-        )
-        agentCost += stats.totalCostUsd
-      }
-      totalCostUsd += agentCost
-
+    for (const [agentId, liveStatus] of states) {
       agentOverviews.push({
         agentId,
         status: liveStatus.status,
-        latestMessage: latestMsg?.content?.slice(0, 200) ?? null,
-        latestMessageAt: latestMsg?.createdAt ?? latestSession.updatedAt,
-        activitySummary: summarizeToolActivity(events),
+        latestMessage: null,
+        latestMessageAt: liveStatus.lastEventAt || null,
+        activitySummary: null,
         currentTool: liveStatus.currentTool,
-        totalCostUsd: agentCost,
-        sessionCount: sessions.length,
+        totalCostUsd: 0,
+        sessionCount: 0,
       })
     }
-
     return {
       agents: agentOverviews,
-      summary: { totalAgents: agentIds.length, totalCostUsd },
-    }
-  }
-
-  // ── Chat Stream (HTTP) ───────────────────────────────────────────────
-
-  async chatStream(
-    agentId: string,
-    sessionKey: string,
-    message: string,
-    history: MonitoringChatTurn[] = [],
-    options: {
-      messageParts?: OpenClawChatContentPart[]
-      signal?: AbortSignal
-    } = {},
-  ): Promise<ReadableStream<OpenClawStreamEvent>> {
-    await this.assertGatewayReady()
-    const normalizedSessionKey = normalizeBrowserOSChatSessionKey(
-      agentId,
-      sessionKey,
-    )
-    logger.info('Starting OpenClaw chat stream', {
-      agentId,
-      sessionKey: normalizedSessionKey,
-      messageLength: message.length,
-      historyLength: history.length,
-      contentPartCount: options.messageParts?.length ?? 0,
-    })
-    return this.runControlPlaneCall(() =>
-      this.httpClient.streamChat({
-        agentId,
-        sessionKey: normalizedSessionKey,
-        message,
-        messageParts: options.messageParts,
-        history,
-        signal: options.signal,
-      }),
-    )
-  }
-
-  private resolveSpecificAgentSession(
-    agentId: string,
-    sessionKey: string,
-  ): BrowserOSOpenClawAgentSessionResponse {
-    const normalizedSessionKey = normalizeBrowserOSChatSessionKey(
-      agentId,
-      sessionKey,
-    )
-    const canonicalSessionKey = toOpenClawBrowserOSSessionKey(
-      agentId,
-      normalizedSessionKey,
-    )
-    const sessions = this.listSessions(agentId)
-    const session =
-      sessions.find((entry) => entry.key === canonicalSessionKey) ??
-      sessions.find((entry) => entry.key === sessionKey) ??
-      sessions.find(
-        (entry) =>
-          normalizeBrowserOSChatSessionKey(agentId, entry.key) ===
-          normalizedSessionKey,
-      )
-
-    if (!session) {
-      return {
-        agentId,
-        exists: false,
-        sessionKey: normalizedSessionKey,
-        session: null,
-      }
-    }
-
-    return {
-      agentId,
-      exists: true,
-      sessionKey: normalizedSessionKey,
-      session,
+      summary: { totalAgents: agentOverviews.length, totalCostUsd: 0 },
     }
   }
 
@@ -1489,7 +991,6 @@ export class OpenClawService {
     })
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
-    this._jsonlReader = null
   }
 
   private setPort(hostPort: number): void {
@@ -1594,14 +1095,9 @@ export class OpenClawService {
   }
 
   private ensureObserverConnected(): void {
-    // Seed the ClawSession state machine from JSONL on first control plane
-    // call. This gives every agent a correct initial status (working/idle)
-    // before the WS observer has seen any events.
-    if (!this.clawSession.isSeeded()) {
-      this.clawSession.seedFromJsonl(this.jsonlReader)
-    }
-
     if (this.observer.isConnected()) return
+    // ClawSession starts empty after the JSONL seed was removed; the WS
+    // observer fills in agent status as events arrive.
     const url = `http://127.0.0.1:${this.hostPort}`
     this.observer.connect(url, this.token)
   }

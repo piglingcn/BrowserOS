@@ -46,6 +46,8 @@ import {
   connectKlavisInBackground,
   type KlavisProxyRef,
 } from './services/klavis/strata-proxy'
+import { OpenClawGatewayChatClient } from './services/openclaw/openclaw-gateway-chat-client'
+import { getOpenClawService } from './services/openclaw/openclaw-service'
 import type { Env, HttpServerConfig } from './types'
 import { defaultCorsConfig } from './utils/cors'
 import { requireTrustedAppOrigin } from './utils/request-auth'
@@ -130,7 +132,37 @@ export async function createHttpServer(config: HttpServerConfig) {
 
   const agentRoutes = new Hono<Env>()
     .use('/*', requireTrustedAppOrigin())
-    .route('/', createAgentRoutes({ browserosServerPort: port, browser }))
+    .route(
+      '/',
+      createAgentRoutes({
+        browserosServerPort: port,
+        browser,
+        openclawGateway: {
+          getPort: () => getOpenClawService().getPort(),
+          getGatewayToken: () => getOpenClawService().getGatewayToken(),
+          getContainerName: () => OPENCLAW_GATEWAY_CONTAINER_NAME,
+          getLimaHomeDir: () => getLimaHomeDir(),
+          getLimactlPath: () => resolveBundledLimactl(resourcesDir),
+          getVmName: () => VM_NAME,
+        },
+        openclawGatewayChat: new OpenClawGatewayChatClient(
+          getOpenClawService().getPort(),
+          async () => getOpenClawService().getGatewayToken(),
+        ),
+        openclawProvisioner: {
+          createAgent: (input) => getOpenClawService().createAgent(input),
+          removeAgent: (agentId) => getOpenClawService().removeAgent(agentId),
+          listAgents: async () => {
+            const agents = await getOpenClawService().listAgents()
+            return agents.map((agent) => ({
+              agentId: agent.agentId,
+              name: agent.name,
+              model: agent.model,
+            }))
+          },
+        },
+      }),
+    )
 
   const app = new Hono<Env>()
     .use('/*', cors(defaultCorsConfig))

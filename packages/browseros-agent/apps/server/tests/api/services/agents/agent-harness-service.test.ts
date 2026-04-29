@@ -139,7 +139,221 @@ describe('AgentHarnessService', () => {
       toolCalls: [{ toolName: 'read_file' }],
     })
   })
+
+  it('dual-creates an OpenClaw adapter agent on the gateway with the harness id as the gateway name', async () => {
+    const agents: AgentDefinition[] = []
+    const provisionerCalls: Array<{ method: string; input: unknown }> = []
+    const provisioner = {
+      async createAgent(input: unknown) {
+        provisionerCalls.push({ method: 'createAgent', input })
+        return { agentId: 'mock', name: 'mock', workspace: '/workspace' }
+      },
+      async removeAgent(agentId: string) {
+        provisionerCalls.push({ method: 'removeAgent', input: agentId })
+      },
+      async listAgents() {
+        return []
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore(agents) as FileAgentStore,
+      runtime: stubRuntime(),
+      openclawProvisioner: provisioner,
+    })
+
+    const agent = await service.createAgent({
+      name: 'OpenClaw bot',
+      adapter: 'openclaw',
+      providerType: 'openai-compatible',
+      providerName: 'Kimi',
+      baseUrl: 'https://api.fireworks.ai/inference/v1',
+      apiKey: 'test-key',
+      modelId: 'accounts/fireworks/models/kimi-k2p5',
+      supportsImages: true,
+    })
+
+    expect(agent.adapter).toBe('openclaw')
+    expect(provisionerCalls).toEqual([
+      {
+        method: 'createAgent',
+        input: {
+          name: agent.id,
+          providerType: 'openai-compatible',
+          providerName: 'Kimi',
+          baseUrl: 'https://api.fireworks.ai/inference/v1',
+          apiKey: 'test-key',
+          modelId: 'accounts/fireworks/models/kimi-k2p5',
+          supportsImages: true,
+        },
+      },
+    ])
+    expect(agents).toHaveLength(1)
+  })
+
+  it('rolls back the harness record when gateway provisioning fails', async () => {
+    const agents: AgentDefinition[] = []
+    const provisioner = {
+      async createAgent() {
+        throw new Error('gateway boom')
+      },
+      async removeAgent() {
+        // no-op
+      },
+      async listAgents() {
+        return []
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore(agents) as FileAgentStore,
+      runtime: stubRuntime(),
+      openclawProvisioner: provisioner,
+    })
+
+    await expect(
+      service.createAgent({ name: 'Doomed', adapter: 'openclaw' }),
+    ).rejects.toThrow('gateway boom')
+    expect(agents).toHaveLength(0)
+  })
+
+  it('refuses to create an OpenClaw agent when no provisioner is wired', async () => {
+    const agents: AgentDefinition[] = []
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore(agents) as FileAgentStore,
+      runtime: stubRuntime(),
+    })
+
+    await expect(
+      service.createAgent({ name: 'Stranded', adapter: 'openclaw' }),
+    ).rejects.toThrow('OpenClaw gateway provisioner is not wired')
+    expect(agents).toHaveLength(0)
+  })
+
+  it('removes the gateway agent on delete and tolerates gateway-side failure', async () => {
+    const agents: AgentDefinition[] = []
+    const provisionerCalls: string[] = []
+    let shouldFail = false
+    const provisioner = {
+      async createAgent() {
+        return { agentId: 'mock', name: 'mock', workspace: '/workspace' }
+      },
+      async removeAgent(agentId: string) {
+        provisionerCalls.push(agentId)
+        if (shouldFail) throw new Error('gateway down')
+      },
+      async listAgents() {
+        return []
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore(agents) as FileAgentStore,
+      runtime: stubRuntime(),
+      openclawProvisioner: provisioner,
+    })
+
+    const agent = await service.createAgent({
+      name: 'OpenClaw bot',
+      adapter: 'openclaw',
+    })
+
+    // Happy path: gateway delete succeeds → harness record gone.
+    expect(await service.deleteAgent(agent.id)).toBe(true)
+    expect(provisionerCalls).toEqual([agent.id])
+    expect(agents).toHaveLength(0)
+
+    // Failure path: gateway delete throws → harness record still removed.
+    const second = await service.createAgent({
+      name: 'OpenClaw bot 2',
+      adapter: 'openclaw',
+    })
+    shouldFail = true
+    expect(await service.deleteAgent(second.id)).toBe(true)
+    expect(agents).toHaveLength(0)
+  })
+
+  it('backfills harness records for gateway agents on first listAgents call', async () => {
+    const agents: AgentDefinition[] = []
+    const provisioner = {
+      async createAgent() {
+        return { agentId: 'mock', name: 'mock', workspace: '/workspace' }
+      },
+      async removeAgent() {
+        // no-op
+      },
+      async listAgents() {
+        return [
+          { agentId: 'main', name: 'main' },
+          { agentId: 'orphan', name: 'orphan' },
+        ]
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore(agents) as FileAgentStore,
+      runtime: stubRuntime(),
+      openclawProvisioner: provisioner,
+    })
+
+    const listed = await service.listAgents()
+    expect(listed.map((a) => a.id).sort()).toEqual(['main', 'orphan'])
+    expect(listed.every((a) => a.adapter === 'openclaw')).toBe(true)
+
+    // Idempotent: a second listAgents must not duplicate the records.
+    const second = await service.listAgents()
+    expect(second).toHaveLength(2)
+  })
+
+  it('keeps harness usable when gateway listAgents fails during reconciliation', async () => {
+    const agents: AgentDefinition[] = [
+      {
+        id: 'agent-existing',
+        name: 'existing',
+        adapter: 'claude',
+        modelId: 'haiku',
+        reasoningEffort: 'medium',
+        permissionMode: 'approve-all',
+        sessionKey: 'agent:agent-existing:main',
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ]
+    const provisioner = {
+      async createAgent() {
+        return { agentId: 'mock', name: 'mock', workspace: '/workspace' }
+      },
+      async removeAgent() {
+        // no-op
+      },
+      async listAgents() {
+        throw new Error('gateway down at boot')
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore(agents) as FileAgentStore,
+      runtime: stubRuntime(),
+      openclawProvisioner: provisioner,
+    })
+
+    const listed = await service.listAgents()
+    expect(listed).toHaveLength(1)
+    expect(listed[0]?.id).toBe('agent-existing')
+  })
 })
+
+function stubRuntime(): AgentRuntime {
+  return {
+    async status() {
+      return { state: 'ready' }
+    },
+    async listSessions() {
+      return []
+    },
+    async getHistory(input) {
+      return { agentId: input.agent.id, sessionId: 'main', items: [] }
+    },
+    async send() {
+      return new ReadableStream<AgentStreamEvent>()
+    },
+  }
+}
 
 function createAgentStore(agents: AgentDefinition[]) {
   return {
@@ -164,8 +378,34 @@ function createAgentStore(agents: AgentDefinition[]) {
       agents.push(agent)
       return agent
     },
-    async delete() {
+    async delete(id: string) {
+      const idx = agents.findIndex((agent) => agent.id === id)
+      if (idx === -1) return false
+      agents.splice(idx, 1)
       return true
+    },
+    async upsertExisting(input: {
+      id: string
+      name: string
+      adapter: AgentDefinition['adapter']
+      modelId?: string
+      reasoningEffort?: string
+    }) {
+      const existing = agents.find((entry) => entry.id === input.id)
+      if (existing) return existing
+      const agent: AgentDefinition = {
+        id: input.id,
+        name: input.name,
+        adapter: input.adapter,
+        modelId: input.modelId ?? 'default',
+        reasoningEffort: input.reasoningEffort ?? 'medium',
+        permissionMode: 'approve-all',
+        sessionKey: `agent:${input.id}:main`,
+        createdAt: 1000,
+        updatedAt: 1000,
+      }
+      agents.push(agent)
+      return agent
     },
   } satisfies Partial<FileAgentStore>
 }

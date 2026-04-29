@@ -14,7 +14,10 @@ import { stream } from 'hono/streaming'
 import { formatUserMessage } from '../../agent/format-message'
 import type { Browser } from '../../browser/browser'
 import { createAcpUIMessageStreamResponse } from '../../lib/agents/acp-ui-message-stream'
-import { AcpxRuntime } from '../../lib/agents/acpx-runtime'
+import {
+  AcpxRuntime,
+  type OpenclawGatewayAccessor,
+} from '../../lib/agents/acpx-runtime'
 import {
   AGENT_ADAPTER_CATALOG,
   getAgentAdapterDescriptor,
@@ -35,8 +38,11 @@ import type {
 } from '../../lib/agents/types'
 import {
   AgentHarnessService,
+  type OpenClawProvisioner,
+  OpenClawProvisionerUnavailableError,
   UnknownAgentError,
 } from '../services/agents/agent-harness-service'
+import type { OpenClawGatewayChatClient } from '../services/openclaw/openclaw-gateway-chat-client'
 import type { Env } from '../types'
 import { resolveBrowserContextPageIds } from '../utils/resolve-browser-context-page-ids'
 
@@ -47,6 +53,11 @@ type AgentRouteService = {
     adapter: AgentAdapter
     modelId?: string
     reasoningEffort?: string
+    providerType?: string
+    providerName?: string
+    baseUrl?: string
+    apiKey?: string
+    supportsImages?: boolean
   }): Promise<AgentDefinition>
   getAgent(agentId: string): Promise<AgentDefinition | null>
   deleteAgent(agentId: string): Promise<boolean>
@@ -54,6 +65,7 @@ type AgentRouteService = {
   send(input: {
     agentId: string
     message: string
+    attachments?: ReadonlyArray<{ mediaType: string; data: string }>
     signal?: AbortSignal
   }): Promise<ReadableStream<AgentStreamEvent>>
 }
@@ -63,6 +75,24 @@ type AgentRouteDeps = {
   runtime?: AgentRuntime
   browser?: Pick<Browser, 'resolveTabIds'>
   browserosServerPort?: number
+  /**
+   * Required when an `openclaw` adapter agent is in use; harmless when
+   * absent. Forwarded to the AcpxRuntime so it can spawn `openclaw acp`
+   * inside the gateway container.
+   */
+  openclawGateway?: OpenclawGatewayAccessor
+  /**
+   * Optional. Enables the image-attachment carve-out for OpenClaw
+   * agents — image-bearing turns route through the gateway HTTP
+   * `/v1/chat/completions` instead of the ACP bridge (which drops
+   * image content blocks).
+   */
+  openclawGatewayChat?: OpenClawGatewayChatClient
+  /**
+   * Required to dual-create/delete `openclaw` adapter agents on the
+   * gateway side. Without this, openclaw create requests fail with 503.
+   */
+  openclawProvisioner?: OpenClawProvisioner
 }
 
 type SidepanelAcpChatRequest = {
@@ -81,7 +111,12 @@ type SidepanelAcpChatRequest = {
 export function createAgentRoutes(deps: AgentRouteDeps = {}) {
   const service =
     deps.service ??
-    new AgentHarnessService({ browserosServerPort: deps.browserosServerPort })
+    new AgentHarnessService({
+      browserosServerPort: deps.browserosServerPort,
+      openclawGateway: deps.openclawGateway,
+      openclawGatewayChat: deps.openclawGatewayChat,
+      openclawProvisioner: deps.openclawProvisioner,
+    })
   let sidepanelRuntime = deps.runtime
 
   return new Hono<Env>()
@@ -122,6 +157,7 @@ export function createAgentRoutes(deps: AgentRouteDeps = {}) {
       try {
         sidepanelRuntime ??= new AcpxRuntime({
           browserosServerPort: deps.browserosServerPort,
+          openclawGateway: deps.openclawGateway,
         })
         const eventStream = await sidepanelRuntime.send({
           agent,
@@ -172,6 +208,7 @@ export function createAgentRoutes(deps: AgentRouteDeps = {}) {
         eventStream = await service.send({
           agentId,
           message: parsed.message,
+          attachments: parsed.attachments,
           signal: c.req.raw.signal,
         })
       } catch (err) {
@@ -211,6 +248,11 @@ async function parseCreateAgentBody(c: Context<Env>): Promise<
       adapter: AgentAdapter
       modelId?: string
       reasoningEffort?: string
+      providerType?: string
+      providerName?: string
+      baseUrl?: string
+      apiKey?: string
+      supportsImages?: boolean
     }
   | { error: string }
 > {
@@ -237,7 +279,13 @@ async function parseCreateAgentBody(c: Context<Env>): Promise<
       ? record.reasoningEffort.trim()
       : undefined
 
-  if (!isSupportedAgentModel(record.adapter, modelId)) {
+  // OpenClaw agents resolve their model from the gateway-side provider
+  // config rather than from the harness catalog. Skip catalog model
+  // validation for that adapter; everything else still uses the catalog.
+  if (
+    record.adapter !== 'openclaw' &&
+    !isSupportedAgentModel(record.adapter, modelId)
+  ) {
     return { error: 'Invalid modelId' }
   }
   if (!isSupportedReasoningEffort(record.adapter, reasoningEffort)) {
@@ -249,17 +297,99 @@ async function parseCreateAgentBody(c: Context<Env>): Promise<
     adapter: record.adapter,
     modelId,
     reasoningEffort,
+    providerType: readOptionalTrimmedString(record, 'providerType'),
+    providerName: readOptionalTrimmedString(record, 'providerName'),
+    baseUrl: readOptionalTrimmedString(record, 'baseUrl'),
+    apiKey: readOptionalTrimmedString(record, 'apiKey'),
+    supportsImages:
+      typeof record.supportsImages === 'boolean'
+        ? record.supportsImages
+        : undefined,
   }
 }
 
+/**
+ * Image attachment forwarded from the chat composer. The dataUrl is a
+ * `data:<mime>;base64,<payload>` string the composer pre-encoded; the
+ * harness strips the prefix and hands raw base64 to acpx, which builds
+ * the ACP `image` content block.
+ */
+export interface InboundImageAttachment {
+  mediaType: string
+  data: string
+}
+
+// Defense-in-depth caps on chat-body image attachments. The composer
+// already enforces these client-side (see `lib/attachments.ts`) but
+// `/agents/:id/chat` accepts direct curl/script callers too, so the
+// server has to validate independently.
+const MAX_CHAT_ATTACHMENTS = 10
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB raw, post-decode
+// data: URLs encode bytes as base64 (~4/3 inflation) plus the
+// `data:<mime>;base64,` prefix; cap the encoded string against that
+// rather than 2× the raw budget.
+const MAX_IMAGE_DATA_URL_LENGTH = Math.ceil(MAX_IMAGE_BYTES * (4 / 3)) + 100
+const ALLOWED_IMAGE_MEDIA_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+])
+
 async function parseChatBody(
   c: Context<Env>,
-): Promise<{ message: string } | { error: string }> {
+): Promise<
+  { message: string; attachments: InboundImageAttachment[] } | { error: string }
+> {
   const body = await readJsonBody(c)
   if ('error' in body) return body
   const message =
     typeof body.value.message === 'string' ? body.value.message.trim() : ''
-  return message ? { message } : { error: 'Message is required' }
+  const attachmentsRaw = Array.isArray(body.value.attachments)
+    ? body.value.attachments
+    : []
+  if (attachmentsRaw.length > MAX_CHAT_ATTACHMENTS) {
+    return {
+      error: `at most ${MAX_CHAT_ATTACHMENTS} attachments are allowed per message`,
+    }
+  }
+  const attachments: InboundImageAttachment[] = []
+  for (const entry of attachmentsRaw) {
+    if (!entry || typeof entry !== 'object') {
+      return { error: 'invalid attachment entry' }
+    }
+    const record = entry as Record<string, unknown>
+    if (record.kind !== 'image') {
+      return { error: 'attachment kind must be "image"' }
+    }
+    const mediaType =
+      typeof record.mediaType === 'string' ? record.mediaType : ''
+    const dataUrl = typeof record.dataUrl === 'string' ? record.dataUrl : ''
+    if (!ALLOWED_IMAGE_MEDIA_TYPES.has(mediaType)) {
+      return {
+        error: `unsupported image type: ${mediaType || 'unknown'}`,
+      }
+    }
+    if (!dataUrl.startsWith('data:')) {
+      return { error: 'image attachment must include a data: URL' }
+    }
+    if (dataUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      return { error: `image exceeds ${MAX_IMAGE_BYTES} bytes` }
+    }
+    // Strip the `data:<mime>;base64,` prefix — ACP image blocks carry
+    // raw base64 plus the mime type as separate fields.
+    const commaIdx = dataUrl.indexOf(',')
+    const data = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl
+    if (!data) {
+      return { error: 'image attachment payload is empty' }
+    }
+    attachments.push({ mediaType, data })
+  }
+  if (!message && attachments.length === 0) {
+    return { error: 'Message is required' }
+  }
+  return { message, attachments }
 }
 
 async function parseSidepanelAcpChatBody(
@@ -404,6 +534,9 @@ async function readJsonBody(
 function handleAgentRouteError(c: Context<Env>, err: unknown) {
   if (err instanceof UnknownAgentError) {
     return c.json({ error: err.message }, 404)
+  }
+  if (err instanceof OpenClawProvisionerUnavailableError) {
+    return c.json({ error: err.message }, 503)
   }
   const message = err instanceof Error ? err.message : String(err)
   return c.json({ error: message }, 500)

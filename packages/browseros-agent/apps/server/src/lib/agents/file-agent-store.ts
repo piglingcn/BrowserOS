@@ -25,6 +25,16 @@ export interface CreateAgentInput {
   adapter: AgentAdapter
   modelId?: string
   reasoningEffort?: string
+  /**
+   * Provider fields used only when `adapter === 'openclaw'`. They are
+   * forwarded to the gateway-side createAgent call by the harness
+   * service. Other adapters ignore them.
+   */
+  providerType?: string
+  providerName?: string
+  baseUrl?: string
+  apiKey?: string
+  supportsImages?: boolean
 }
 
 export class FileAgentStore {
@@ -62,7 +72,12 @@ export class FileAgentStore {
   async create(input: CreateAgentInput): Promise<AgentDefinition> {
     return this.withWriteLock(async () => {
       const now = Date.now()
-      const id = randomUUID()
+      // OpenClaw agent names must match ^[a-z][a-z0-9-]*$, so prefix with
+      // a fixed letter to guarantee a valid name when the harness id is
+      // also used as the gateway-side agent name. Other adapters keep
+      // raw UUIDs to preserve compatibility with existing records.
+      const id =
+        input.adapter === 'openclaw' ? `oc-${randomUUID()}` : randomUUID()
       const agent: AgentDefinition = {
         id,
         name: input.name.trim(),
@@ -83,6 +98,49 @@ export class FileAgentStore {
         adapter: agent.adapter,
         modelId: agent.modelId,
         reasoningEffort: agent.reasoningEffort,
+        sessionKey: agent.sessionKey,
+        filePath: this.filePath,
+      })
+      return agent
+    })
+  }
+
+  /**
+   * Inserts a harness record using a caller-provided id. Used to backfill
+   * harness records for gateway-side OpenClaw agents that pre-date the
+   * dual-creation flow (or were created directly via the legacy
+   * `/claw/agents` API). No-ops when an entry with this id already
+   * exists, so the call is safe to run on every server start.
+   */
+  async upsertExisting(input: {
+    id: string
+    name: string
+    adapter: AgentAdapter
+    modelId?: string
+    reasoningEffort?: string
+  }): Promise<AgentDefinition> {
+    return this.withWriteLock(async () => {
+      const file = await this.read()
+      const existing = file.agents.find((entry) => entry.id === input.id)
+      if (existing) return existing
+      const now = Date.now()
+      const agent: AgentDefinition = {
+        id: input.id,
+        name: input.name.trim(),
+        adapter: input.adapter,
+        modelId: input.modelId ?? resolveDefaultModelId(input.adapter),
+        reasoningEffort:
+          input.reasoningEffort ?? resolveDefaultReasoningEffort(input.adapter),
+        permissionMode: 'approve-all',
+        sessionKey: `agent:${input.id}:main`,
+        createdAt: now,
+        updatedAt: now,
+      }
+      await this.write({ ...file, agents: [...file.agents, agent] })
+      logger.info('Agent harness store backfilled agent', {
+        agentId: agent.id,
+        name: agent.name,
+        adapter: agent.adapter,
         sessionKey: agent.sessionKey,
         filePath: this.filePath,
       })
