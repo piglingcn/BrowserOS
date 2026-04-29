@@ -145,7 +145,7 @@ export async function createHttpServer(config: HttpServerConfig) {
           getVmName: () => VM_NAME,
         },
         openclawGatewayChat: new OpenClawGatewayChatClient(
-          getOpenClawService().getPort(),
+          () => getOpenClawService().getPort(),
           async () => getOpenClawService().getGatewayToken(),
         ),
         openclawProvisioner: {

@@ -2,13 +2,13 @@
   "agent": {
     "type": "single",
     "provider": "openai-compatible",
-    "model": "moonshotai/kimi-k2.5",
-    "apiKey": "OPENROUTER_API_KEY",
-    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "accounts/fireworks/models/kimi-k2p5",
+    "apiKey": "FIREWORKS_API_KEY",
+    "baseUrl": "https://api.fireworks.ai/inference/v1",
     "supportsImages": true
   },
   "dataset": "../data/agisdk-real.jsonl",
-  "num_workers": 10,
+  "num_workers": 4,
   "restart_server_per_task": true,
   "browseros": {
     "server_url": "http://127.0.0.1:9110",

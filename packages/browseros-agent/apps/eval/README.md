@@ -66,9 +66,9 @@ The orchestrator works with any LLM provider. The executor can be another LLM, o
     },
     "executor": {
       "provider": "clado-action",
-      "model": "qwen3-vl-30b-a3b-instruct",
+      "model": "Qwen3.5-35B-A3B-action-000159-merged",
       "apiKey": "",
-      "baseUrl": "https://clado-ai--clado-browseros-action-actionmodel-generate.modal.run"
+      "baseUrl": "https://clado-ai--clado-browseros-action-000159-merged-actionmod-f4a6ef.modal.run"
     }
   }
 }

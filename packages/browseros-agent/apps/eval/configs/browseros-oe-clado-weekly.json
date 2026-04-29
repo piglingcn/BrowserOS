@@ -9,12 +9,12 @@
     },
     "executor": {
       "provider": "clado-action",
-      "model": "qwen3-vl-30b-a3b-instruct",
+      "model": "Qwen3.5-35B-A3B-action-000159-merged",
       "apiKey": "",
-      "baseUrl": "https://clado-ai--clado-browseros-action-actionmodel-generate.modal.run"
+      "baseUrl": "https://clado-ai--clado-browseros-action-000159-merged-actionmod-f4a6ef.modal.run"
     }
   },
-  "dataset": "../data/webbench-2of4-50.jsonl",
+  "dataset": "../data/agisdk-real.jsonl",
   "num_workers": 10,
   "restart_server_per_task": true,
   "browseros": {
@@ -23,11 +23,11 @@
     "base_server_port": 9110,
     "base_extension_port": 9310,
     "load_extensions": false,
-    "headless": false
+    "headless": true
   },
   "captcha": {
     "api_key_env": "NOPECHA_API_KEY"
   },
-  "graders": ["performance_grader"],
+  "graders": ["agisdk_state_diff"],
   "timeout_ms": 1800000
 }

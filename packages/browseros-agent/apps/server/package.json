@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "bun --watch --env-file=.env.development src/index.ts",
+    "start:ci": "bun --env-file=.env.development src/index.ts",
     "build": "bun ../../scripts/build/server.ts --target=all",
     "test": "bun run test:all",
     "test:all": "bun run ./tests/__helpers__/run-test-group.ts all",

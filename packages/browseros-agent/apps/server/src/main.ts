@@ -126,17 +126,28 @@ export class Application {
     this.logStartupSummary()
     startSkillSync()
 
-    configureOpenClawService({
-      browserosServerPort: this.config.serverPort,
-      resourcesDir,
-      vmCache: this.vmCacheConfig(),
-    })
-      .tryAutoStart()
-      .catch((err) =>
-        logger.warn('OpenClaw auto-start failed', {
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      )
+    // OpenClaw is best-effort — a failure here must not crash the server.
+    // The container runtime constructor throws synchronously on non-darwin
+    // (e.g. Linux CI runners), and the .catch() on tryAutoStart() only
+    // handles async throws inside auto-start. Wrap both in try/catch so the
+    // process keeps running even when OpenClaw can't initialize at all.
+    try {
+      configureOpenClawService({
+        browserosServerPort: this.config.serverPort,
+        resourcesDir,
+        vmCache: this.vmCacheConfig(),
+      })
+        .tryAutoStart()
+        .catch((err) =>
+          logger.warn('OpenClaw auto-start failed', {
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+    } catch (err) {
+      logger.warn('OpenClaw configuration failed, continuing without it', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
 
     metrics.log('http_server.started', { version: VERSION })
   }

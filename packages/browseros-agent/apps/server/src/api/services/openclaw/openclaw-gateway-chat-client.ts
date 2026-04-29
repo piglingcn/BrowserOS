@@ -37,7 +37,7 @@ export interface GatewayChatTurnInput {
 
 export class OpenClawGatewayChatClient {
   constructor(
-    private readonly hostPort: number,
+    private readonly getHostPort: () => number,
     private readonly getToken: () => Promise<string>,
   ) {}
 
@@ -46,7 +46,7 @@ export class OpenClawGatewayChatClient {
   ): Promise<ReadableStream<AgentStreamEvent>> {
     const token = await this.getToken()
     const response = await fetch(
-      `http://127.0.0.1:${this.hostPort}/v1/chat/completions`,
+      `http://127.0.0.1:${this.getHostPort()}/v1/chat/completions`,
       {
         method: 'POST',
         headers: {

@@ -31,7 +31,7 @@ const PAGE_SCOPED_TOOLS = new Set<string>([
 ])
 
 interface CladoActionResponse {
-  action?: string
+  action?: string | null
   x?: number
   y?: number
   text?: string
@@ -43,8 +43,11 @@ interface CladoActionResponse {
   endY?: number
   amount?: number
   time?: number
+  final_answer?: string | null
   inference_time_seconds?: number
   raw_response?: string
+  thinking?: string | null
+  parse_error?: string | null
 }
 
 interface Viewport {
@@ -65,9 +68,14 @@ interface CladoAction {
   endY?: number
   amount?: number
   time?: number
+  final_answer?: string
 }
 
-type RawActionPayload = Partial<CladoAction>
+type RawActionPayload = Partial<Omit<CladoAction, 'final_answer'>> & {
+  final_answer?: string | null
+}
+
+const MAX_CONSECUTIVE_PARSE_FAILURES = 3
 
 interface ActionPoint {
   x: number
@@ -135,6 +143,8 @@ export class CladoActionExecutor {
     const actionHistory: CladoAction[] = []
     let predictionCalls = 0
     const thinkingTrace: string[] = []
+    let consecutiveParseFailures = 0
+    let finalAnswer: string | undefined
 
     let status: ExecutorResult['status'] = 'done'
     let reason = 'Goal executed.'
@@ -209,6 +219,17 @@ export class CladoActionExecutor {
 
       const predictedActions = this.parseActions(prediction)
       if (predictedActions.length === 0) {
+        // Per Clado contract: HTTP 200 with action=null on parse failure.
+        // Count as an invalid step so the model can self-correct on the
+        // next call instead of dropping the trajectory.
+        consecutiveParseFailures++
+        const parseError =
+          prediction.parse_error ?? 'no parsable <answer> in raw_response'
+        actionHistory.push({
+          action: 'invalid',
+          text: `parse_error: ${parseError}`,
+        })
+        this.stepsUsed++
         await this.callbacks.onStepFinish?.({
           toolCalls: [
             {
@@ -224,14 +245,21 @@ export class CladoActionExecutor {
               output: {
                 prediction: this.summarizePrediction(prediction),
                 parsedActions: [],
+                parseError,
+                consecutiveParseFailures,
               },
             },
           ],
         })
-        status = 'blocked'
-        reason = 'Clado action response did not contain a valid action.'
-        break
+
+        if (consecutiveParseFailures >= MAX_CONSECUTIVE_PARSE_FAILURES) {
+          status = 'blocked'
+          reason = `Clado returned ${consecutiveParseFailures} consecutive unparseable responses.`
+          break
+        }
+        continue
       }
+      consecutiveParseFailures = 0
 
       let requestedStop = false
       const executionNotes: string[] = []
@@ -272,7 +300,12 @@ export class CladoActionExecutor {
 
         actionHistory.push(predictedAction)
         if (predictedAction.action === 'end') {
-          reason = 'Model requested end() and marked task complete.'
+          if (predictedAction.final_answer) {
+            finalAnswer = predictedAction.final_answer
+            reason = `Model requested end() with final_answer: ${predictedAction.final_answer.slice(0, 240)}`
+          } else {
+            reason = 'Model requested end() and marked task complete.'
+          }
           requestedStop = true
           break
         }
@@ -327,6 +360,7 @@ export class CladoActionExecutor {
       actions: actionHistory,
       url: this.currentUrl,
       thinkingTrace,
+      finalAnswer,
     })
 
     return {
@@ -440,6 +474,10 @@ export class CladoActionExecutor {
       endY: typeof payload.endY === 'number' ? payload.endY : undefined,
       amount: typeof payload.amount === 'number' ? payload.amount : undefined,
       time: typeof payload.time === 'number' ? payload.time : undefined,
+      final_answer:
+        typeof payload.final_answer === 'string'
+          ? payload.final_answer
+          : undefined,
     }
   }
 
@@ -578,7 +616,9 @@ export class CladoActionExecutor {
       }
 
       case 'end': {
-        return 'Model requested end().'
+        return action.final_answer
+          ? `Model requested end() with final_answer: ${action.final_answer.slice(0, 240)}`
+          : 'Model requested end().'
       }
 
       default: {
@@ -588,9 +628,10 @@ export class CladoActionExecutor {
   }
 
   private async captureScreenshotBase64(signal?: AbortSignal): Promise<string> {
+    // Clado contract is PNG or JPEG; use PNG for lossless input.
     const result = await this.runTool(
       'take_screenshot',
-      { format: 'webp', quality: 80 },
+      { format: 'png' },
       signal,
     )
 
@@ -754,6 +795,11 @@ export class CladoActionExecutor {
       'C-S-tab': 'Control+Shift+Tab',
       'C-S-n': 'Control+Shift+N',
       'C-down': 'Control+ArrowDown',
+      // macOS Cmd shortcuts (Meta in CDP).
+      'M-a': 'Meta+A',
+      'M-c': 'Meta+C',
+      'M-v': 'Meta+V',
+      'M-x': 'Meta+X',
       'M-f4': 'Alt+F4',
     }
     return map[raw] ?? raw
@@ -841,7 +887,11 @@ export class CladoActionExecutor {
       case 'wait':
         return `${action.action}:${action.time ?? 1}`
       case 'end':
-        return 'end()'
+        return action.final_answer
+          ? `end(${action.final_answer.slice(0, 32)})`
+          : 'end()'
+      case 'invalid':
+        return `invalid(${(action.text ?? '').slice(0, 40)})`
       default:
         return action.action
     }
@@ -871,6 +921,8 @@ export class CladoActionExecutor {
           return `wait(${Math.round(action.time ?? 1)}s)`
         case 'end':
           return 'end()'
+        case 'invalid':
+          return 'invalid()'
         default:
           return action.action
       }
@@ -885,8 +937,9 @@ export class CladoActionExecutor {
     actions: CladoAction[]
     url: string
     thinkingTrace: string[]
+    finalAnswer?: string
   }): string {
-    const { status, reason, actions, url, thinkingTrace } = params
+    const { status, reason, actions, url, thinkingTrace, finalAnswer } = params
     const actionSummary =
       actions.length === 0
         ? 'No actions were executed.'
@@ -907,6 +960,7 @@ export class CladoActionExecutor {
       `Status: ${status}`,
       `Reason: ${reason}`,
       `URL: ${url || 'unknown'}`,
+      finalAnswer ? `Final answer: ${finalAnswer}` : '',
       '',
       'Recent actions:',
       actionSummary,
