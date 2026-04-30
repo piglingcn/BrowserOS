@@ -156,9 +156,14 @@ bun run build:server          # Build production server resource artifacts and u
 bun run build:agent           # Build agent extension
 
 # Test
-bun run test                  # Run standard tests
-bun run test:cdp              # Run CDP-based tests
-bun run test:integration      # Run integration tests
+bun run test                  # Run all tests
+bun run test:all              # Run all tests
+bun run test:main             # Run key server tools and integration tests
+
+# App-specific test groups (from packages/browseros-agent)
+cd apps/server && bun run test:tools
+cd apps/server && bun run test:cdp
+cd apps/server && bun run test:integration
 
 # Quality
 bun run lint                  # Check with Biome

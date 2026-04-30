@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "eval": "bun --env-file=.env.development run src/index.ts",
+    "test": "bun run ../../scripts/run-bun-test.ts ./apps/eval/tests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
