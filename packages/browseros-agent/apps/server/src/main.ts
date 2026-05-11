@@ -24,8 +24,8 @@ import { INLINED_ENV } from './env'
 import {
   configureClaudeRuntime,
   configureCodexRuntime,
-  configureHermesRuntime,
   getHermesRuntime,
+  startHermesRuntimeBestEffort,
 } from './lib/agents/runtime'
 import {
   cleanOldSessions,
@@ -158,32 +158,7 @@ export class Application {
       })
     }
 
-    // Hermes container is also best-effort — same crash isolation
-    // semantics as OpenClaw above. Image is pulled in the background;
-    // an idle container is brought up so per-turn `nerdctl exec hermes acp`
-    // calls from the harness don't pay container-create latency.
-    try {
-      const hermesRuntime = configureHermesRuntime({ resourcesDir })
-      if (hermesRuntime) {
-        void hermesRuntime.executeAction({ type: 'install' }).catch((err) =>
-          logger.warn('Hermes prewarm failed', {
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        )
-        void hermesRuntime.executeAction({ type: 'start' }).catch((err) =>
-          logger.warn('Hermes container start failed', {
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        )
-      }
-    } catch (err) {
-      logger.warn(
-        'Hermes container configuration failed, continuing without it',
-        {
-          error: err instanceof Error ? err.message : String(err),
-        },
-      )
-    }
+    startHermesRuntimeBestEffort({ resourcesDir })
 
     metrics.log('http_server.started', { version: VERSION })
   }

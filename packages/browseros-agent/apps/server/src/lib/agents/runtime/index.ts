@@ -30,6 +30,8 @@ export {
   HermesContainerRuntime,
   type HermesContainerRuntimeConfig,
   prepareHermesContext,
+  type StartHermesRuntimeBestEffortOptions,
+  startHermesRuntimeBestEffort,
 } from './hermes-container-runtime'
 export {
   HostProcessAgentRuntime,

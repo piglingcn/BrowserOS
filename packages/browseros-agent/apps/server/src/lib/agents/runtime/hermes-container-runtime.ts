@@ -15,11 +15,6 @@ import {
   HERMES_CONTAINER_NAME,
   HERMES_IMAGE,
 } from '@browseros/shared/constants/hermes'
-import {
-  getHermesAgentHomeHostDir,
-  getHermesHarnessHostDir,
-  getHermesHostStateDir,
-} from '../../../api/services/hermes/hermes-paths'
 import { getBrowserosDir } from '../../browseros-dir'
 import { ContainerCli } from '../../container/container-cli'
 import { ImageLoader } from '../../container/image-loader'
@@ -46,6 +41,11 @@ import {
   finishBrowserosManagedContext,
   prepareBrowserosManagedContext,
 } from '../acpx-agent-common'
+import {
+  getHermesAgentHomeHostDir,
+  getHermesHarnessHostDir,
+  getHermesHostStateDir,
+} from '../hermes/hermes-paths'
 import { ContainerAgentRuntime } from './container-agent-runtime'
 import { getAgentRuntimeRegistry } from './registry'
 import type { ExecSpec } from './types'
@@ -53,8 +53,6 @@ import type { ExecSpec } from './types'
 const HERMES_BINARY = '/opt/hermes/.venv/bin/hermes'
 
 export interface HermesContainerRuntimeConfig {
-  /** BrowserOS state root — used to compute per-agent home paths. */
-  browserosDir: string
   /** Host-side directory where Hermes per-agent home dirs live. */
   hermesHarnessHostDir: string
 }
@@ -150,10 +148,7 @@ export class HermesContainerRuntime extends ContainerAgentRuntime {
   // ── AgentRuntime additions ───────────────────────────────────────
 
   getPerAgentHomeDir(agentId: string): string {
-    return getHermesAgentHomeHostDir({
-      browserosDir: this.hermesConfig.browserosDir,
-      agentId,
-    })
+    return join(this.hermesConfig.hermesHarnessHostDir, agentId, 'home')
   }
 
   /**
@@ -191,9 +186,8 @@ export class HermesContainerRuntime extends ContainerAgentRuntime {
  */
 function translateHermesHomeToContainerPath(
   hostHome: string,
-  browserosDir: string,
+  harnessHostRoot: string,
 ): string {
-  const harnessHostRoot = getHermesHarnessHostDir(browserosDir)
   if (hostHome === harnessHostRoot) return HERMES_CONTAINER_HARNESS_DIR
   if (hostHome.startsWith(`${harnessHostRoot}/`)) {
     return `${HERMES_CONTAINER_HARNESS_DIR}${hostHome.slice(harnessHostRoot.length)}`
@@ -232,7 +226,7 @@ export async function prepareHermesContext(
 
   const hermesAgentHomeInContainer = translateHermesHomeToContainerPath(
     hermesAgentHome,
-    input.browserosDir,
+    getHermesHarnessHostDir(input.browserosDir),
   )
 
   return finishBrowserosManagedContext({
@@ -258,6 +252,16 @@ export interface ConfigureHermesRuntimeOptions {
   resourcesDir?: string
   /** Override BrowserOS state dir (defaults to `getBrowserosDir()`). */
   browserosDir?: string
+}
+
+export type HermesRuntimeStartupPhase = 'configure' | 'install' | 'start'
+
+export interface StartHermesRuntimeBestEffortOptions
+  extends ConfigureHermesRuntimeOptions {
+  configureRuntime?: (
+    options: ConfigureHermesRuntimeOptions,
+  ) => HermesContainerRuntime | null
+  onError?: (phase: HermesRuntimeStartupPhase, error: unknown) => void
 }
 
 /**
@@ -310,7 +314,7 @@ export function configureHermesRuntime(
       vmName: VM_NAME,
       lockDir: join(hermesStateDir, '.locks'),
     },
-    { browserosDir, hermesHarnessHostDir },
+    { hermesHarnessHostDir },
   )
 
   getAgentRuntimeRegistry().register(runtime)
@@ -318,8 +322,55 @@ export function configureHermesRuntime(
   return runtime
 }
 
+/**
+ * Startup wiring for the Hermes adapter. Kept beside the adapter runtime so
+ * the server entry point does not need to know Hermes' install/start sequence.
+ */
+export function startHermesRuntimeBestEffort(
+  options: StartHermesRuntimeBestEffortOptions = {},
+): HermesContainerRuntime | null {
+  const {
+    configureRuntime = configureHermesRuntime,
+    onError = logHermesStartupError,
+    ...configureOptions
+  } = options
+
+  let runtime: HermesContainerRuntime | null
+  try {
+    runtime = configureRuntime(configureOptions)
+  } catch (err) {
+    onError('configure', err)
+    return null
+  }
+
+  if (!runtime) return null
+
+  void runtime
+    .executeAction({ type: 'install' })
+    .catch((err) => onError('install', err))
+  void runtime
+    .executeAction({ type: 'start' })
+    .catch((err) => onError('start', err))
+  return runtime
+}
+
 /** Convenience getter — returns the registered runtime or null. */
 export function getHermesRuntime(): HermesContainerRuntime | null {
   const r = getAgentRuntimeRegistry().get('hermes')
   return r instanceof HermesContainerRuntime ? r : null
+}
+
+function logHermesStartupError(
+  phase: HermesRuntimeStartupPhase,
+  error: unknown,
+): void {
+  const message =
+    phase === 'configure'
+      ? 'Hermes container configuration failed, continuing without it'
+      : phase === 'install'
+        ? 'Hermes prewarm failed'
+        : 'Hermes container start failed'
+  logger.warn(message, {
+    error: error instanceof Error ? error.message : String(error),
+  })
 }

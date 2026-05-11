@@ -984,7 +984,6 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       lockDir: stateDir,
     }
     const hermesRuntime = new HermesContainerRuntime(fakeManagedDeps, {
-      browserosDir,
       hermesHarnessHostDir: join(browserosDir, 'vm', 'hermes', 'harness'),
     })
     getAgentRuntimeRegistry().register(hermesRuntime)

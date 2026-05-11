@@ -19,13 +19,13 @@ import type {
 } from '../../../lib/agents/agent-store'
 import type { AgentDefinition } from '../../../lib/agents/agent-types'
 import { DbAgentStore } from '../../../lib/agents/db-agent-store'
+import { writeHermesPerAgentProvider } from '../../../lib/agents/hermes/hermes-paths'
+import { getHermesProviderMapping } from '../../../lib/agents/hermes/hermes-provider-map'
 import {
   FileMessageQueue,
   type QueuedMessage,
   type QueuedMessageAttachment,
 } from '../../../lib/agents/message-queue'
-import { writeHermesPerAgentProvider } from '../hermes/hermes-paths'
-import { getHermesProviderMapping } from '../hermes/hermes-provider-map'
 
 export {
   MessageQueueFullError,
@@ -203,12 +203,6 @@ export class AgentHarnessService {
   private readonly messageQueue: FileMessageQueue
   private readonly turnLifecycleListeners = new Set<TurnLifecycleListener>()
   /**
-   * Optional override for the BrowserOS dir used by Hermes per-agent
-   * provider config writes. Defaults to the global `getBrowserosDir()`
-   * lookup at write time when undefined; tests can inject a tmp dir.
-   */
-  private readonly browserosDir: string | undefined
-  /**
    * Lazy-initialised so tests that swap in a fake `agentStore` don't
    * eagerly hit `getDb()` (which throws when the test harness hasn't
    * called `initializeDb`). Tests that exercise file attribution can
@@ -231,7 +225,6 @@ export class AgentHarnessService {
       agentStore?: AgentStore
       runtime?: AgentRuntime
       browserosServerPort?: number
-      browserosDir?: string
       openclawGateway?: OpenclawGatewayAccessor
       openclawProvisioner?: OpenClawProvisioner
       turnRegistry?: TurnRegistry
@@ -249,7 +242,6 @@ export class AgentHarnessService {
     this.openclawProvisioner = deps.openclawProvisioner ?? null
     this.turnRegistry = deps.turnRegistry ?? new TurnRegistry()
     this.messageQueue = deps.messageQueue ?? new FileMessageQueue()
-    this.browserosDir = deps.browserosDir
     if (deps.producedFilesStore) {
       this.explicitProducedFilesStore = deps.producedFilesStore
     }
@@ -620,7 +612,6 @@ export class AgentHarnessService {
       )
     }
     await writeHermesPerAgentProvider({
-      browserosDir: this.browserosDir,
       agentId,
       providerId: mapping.hermesProvider,
       envVarName: mapping.envVarName,

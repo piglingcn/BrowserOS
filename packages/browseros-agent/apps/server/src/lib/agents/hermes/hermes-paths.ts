@@ -15,7 +15,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { getVmStateDir } from '../../../lib/browseros-dir'
+import { getVmStateDir } from '../../browseros-dir'
 
 /** Top-level Hermes state directory: `<browserosDir>/vm/hermes`. */
 export function getHermesHostStateDir(browserosDir?: string): string {

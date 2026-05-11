@@ -131,15 +131,14 @@ export interface CreateHarnessAgentInput {
   modelId?: string
   reasoningEffort?: string
   /**
-   * Hermes-only — provider id from `HERMES_SUPPORTED_PROVIDERS`. When
-   * paired with `apiKey`, the backend writes a per-agent
-   * config.yaml + .env into the agent's HERMES_HOME so the first chat
-   * doesn't depend on the user having run `hermes setup` globally.
+   * Adapter provider id from the user's BrowserOS AI Settings entry.
+   * Provider-backed adapters use this with `apiKey`/`baseUrl` to write
+   * or provision their runtime-specific provider config.
    */
   providerType?: string
-  /** Hermes-only — API key paired with `providerType`. */
+  /** API key paired with `providerType` when the selected adapter needs one. */
   apiKey?: string
-  /** Hermes-only — base URL for the `custom` provider. */
+  /** Base URL for OpenAI-compatible/custom provider entries. */
   baseUrl?: string
 }
 
