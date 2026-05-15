@@ -26,6 +26,13 @@ export interface McpServiceDeps {
   aclRules?: AclRule[]
   klavisRef?: KlavisProxyRef
   observer?: ToolExecutionObserver
+  // Per-request default windowId from the X-BrowserOS-Default-Window-Id
+  // header. When set, tool handlers inject this into args.windowId for
+  // any tool whose zod input schema has a `windowId` field and whose
+  // caller-supplied args didn't include one. Lets a host application
+  // bind every browser tool call to a specific window without the
+  // agent needing to be aware of it.
+  defaultWindowId?: number
 }
 
 export function createMcpServer(deps: McpServiceDeps): McpServer {
@@ -51,6 +58,7 @@ export function createMcpServer(deps: McpServiceDeps): McpServer {
     },
     aclRules: deps.aclRules,
     observer: deps.observer,
+    defaultWindowId: deps.defaultWindowId,
   })
 
   // Register Klavis proxy tools (if connected via background init)

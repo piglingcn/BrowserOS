@@ -1,23 +1,56 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { z } from 'zod'
 import { logger } from '../../../lib/logger'
 import { metrics } from '../../../lib/metrics'
 import {
   buildMonitoringToolOutput,
   type ToolExecutionObserver,
 } from '../../../monitoring/observer'
-import { executeTool, type ToolContext } from '../../../tools/framework'
+import {
+  executeTool,
+  type ToolContext,
+  type ToolDefinition,
+} from '../../../tools/framework'
 import type { ToolRegistry } from '../../../tools/tool-registry'
+
+// True when the tool's zod input schema is a ZodObject with a `windowId`
+// field. Schema-driven so any future tool that takes a windowId
+// participates automatically — no per-tool allowlist.
+function inputHasWindowIdField(tool: ToolDefinition): boolean {
+  const input = tool.input
+  if (!(input instanceof z.ZodObject)) return false
+  return 'windowId' in (input as z.AnyZodObject).shape
+}
 
 export function registerTools(
   mcpServer: McpServer,
   registry: ToolRegistry,
-  ctx: ToolContext & { observer?: ToolExecutionObserver },
+  ctx: ToolContext & {
+    observer?: ToolExecutionObserver
+    // Default windowId from X-BrowserOS-Default-Window-Id. When set,
+    // tool calls without an explicit args.windowId have this value
+    // injected — provided the tool's schema actually accepts one.
+    defaultWindowId?: number
+  },
 ): void {
   for (const tool of registry.all()) {
+    const acceptsWindowId = inputHasWindowIdField(tool)
     const handler = async (
       args: Record<string, unknown>,
       extra: { signal: AbortSignal },
     ) => {
+      // Inject the per-request default windowId only when (a) the host
+      // supplied one via header, (b) the tool actually accepts a
+      // windowId, and (c) the caller didn't explicitly set one. The
+      // explicit-set check means an agent that *did* pick a windowId on
+      // purpose still wins — we only fill the gap.
+      if (
+        ctx.defaultWindowId !== undefined &&
+        acceptsWindowId &&
+        args.windowId === undefined
+      ) {
+        args.windowId = ctx.defaultWindowId
+      }
       const startTime = performance.now()
       const toolCallId = crypto.randomUUID()
 

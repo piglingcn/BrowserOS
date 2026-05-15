@@ -1459,6 +1459,14 @@ export class Browser {
     await this.cdp.Browser.activateWindow({ windowId })
   }
 
+  async showWindow(windowId: number): Promise<void> {
+    await this.cdp.Browser.showWindow({ windowId })
+  }
+
+  async hideWindow(windowId: number): Promise<void> {
+    await this.cdp.Browser.hideWindow({ windowId })
+  }
+
   async showPage(
     page: number,
     opts?: { windowId?: number; index?: number; activate?: boolean },
