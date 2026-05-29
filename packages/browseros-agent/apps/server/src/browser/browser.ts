@@ -166,6 +166,63 @@ export class Browser {
     return sessionId
   }
 
+  async getActivePageForWindow(windowId: number): Promise<{
+    targetId: string
+    session: ProtocolApi
+    url: string
+  }> {
+    const result = await this.cdp.Browser.getActiveTab({ windowId })
+    const tab = result.tab
+    if (!tab) {
+      throw new Error(`No active tab in window ${windowId}`)
+    }
+    const pageId = await this.ensurePageIdForTarget(tab.targetId)
+    const sessionId = await this.attachToPage(tab.targetId, pageId)
+    return {
+      targetId: tab.targetId,
+      session: this.cdp.session(sessionId),
+      url: tab.url,
+    }
+  }
+
+  /** Resolve a Browser-internal pageId to a CDP session bound to its tab. */
+  async getPageSession(pageId: number): Promise<{
+    targetId: string
+    session: ProtocolApi
+    url: string
+  }> {
+    let info = this.pages.get(pageId)
+    if (!info) {
+      await this.listPages()
+      info = this.pages.get(pageId)
+    }
+    if (!info) {
+      throw new Error(`Unknown page ${pageId}`)
+    }
+    const sessionId = await this.attachToPage(info.targetId, pageId)
+    return {
+      targetId: info.targetId,
+      session: this.cdp.session(sessionId),
+      url: info.url,
+    }
+  }
+
+  // Routes screencast attaches through the same attachToPage path agent
+  // tools use, so the session is registered with consoleCollector + the
+  // full domain enables. Without this, a screencast-first tab would
+  // cache a Page.enable-only session and later agent tool calls would
+  // short-circuit on the cached entry — silently dropping console logs.
+  private async ensurePageIdForTarget(targetId: string): Promise<number> {
+    for (const [pageId, info] of this.pages) {
+      if (info.targetId === targetId) return pageId
+    }
+    await this.listPages()
+    for (const [pageId, info] of this.pages) {
+      if (info.targetId === targetId) return pageId
+    }
+    throw new Error(`Could not resolve pageId for target ${targetId}`)
+  }
+
   // --- Pages ---
 
   async listPages(): Promise<PageInfo[]> {
