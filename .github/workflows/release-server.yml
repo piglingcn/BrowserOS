@@ -7,12 +7,39 @@ on:
         description: "Release version (e.g. 0.0.97)"
         required: true
         type: string
+      targets:
+        description: "Server build targets to publish to R2"
+        required: false
+        default: all
+        type: string
+      publish_github_release:
+        description: "Create or update the GitHub server release"
+        required: false
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       version:
         description: "Release version (e.g. 0.0.97)"
         required: true
         type: string
+      targets:
+        description: "Server build targets to publish to R2"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - darwin-arm64
+          - darwin-x64
+          - linux-arm64
+          - linux-x64
+          - windows-x64
+      publish_github_release:
+        description: "Create or update the GitHub server release"
+        required: false
+        default: true
+        type: boolean
 
 concurrency:
   group: release-server
@@ -80,6 +107,17 @@ jobs:
             exit 1
           fi
 
+      - name: Validate release options
+        env:
+          SERVER_RELEASE_TARGETS: ${{ inputs.targets }}
+          PUBLISH_GITHUB_RELEASE: ${{ inputs.publish_github_release }}
+        run: |
+          set -euo pipefail
+          if [ "$PUBLISH_GITHUB_RELEASE" = "true" ] && [ "$SERVER_RELEASE_TARGETS" != "all" ]; then
+            echo "::error::Set publish_github_release=false when releasing a subset of server targets."
+            exit 1
+          fi
+
       - name: Build and upload release artifacts
         env:
           BROWSEROS_CONFIG_URL: ${{ vars.BROWSEROS_CONFIG_URL || 'https://llm.browseros.com/api/browseros-server/config' }}
@@ -92,7 +130,9 @@ jobs:
           R2_UPLOAD_PREFIX: artifacts/server
           NODE_ENV: production
           LOG_LEVEL: info
-        run: bun run build:server
+          FORCE_COLOR: 1
+          SERVER_RELEASE_TARGETS: ${{ inputs.targets }}
+        run: bun scripts/build/server.ts --target="$SERVER_RELEASE_TARGETS"
 
       - name: Verify release artifacts
         run: |
@@ -106,6 +146,7 @@ jobs:
           printf 'Found release artifacts:\n%s\n' "${ZIP_FILES[@]}"
 
       - name: Generate release notes
+        if: ${{ inputs.publish_github_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
@@ -149,6 +190,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Create GitHub release
+        if: ${{ inputs.publish_github_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}

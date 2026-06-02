@@ -137,6 +137,8 @@ jobs:
     uses: ./.github/workflows/release-server.yml
     with:
       version: ${{ needs.resolve_inputs.outputs.server_version }}
+      targets: darwin-arm64
+      publish_github_release: false
     secrets: inherit
 
   build:
