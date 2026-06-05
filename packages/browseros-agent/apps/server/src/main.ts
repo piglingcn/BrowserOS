@@ -19,7 +19,6 @@ import { INLINED_ENV } from './env'
 import {
   configureClaudeRuntime,
   configureCodexRuntime,
-  getHermesRuntime,
 } from './lib/agents/runtime'
 import {
   cleanOldSessions,
@@ -121,9 +120,6 @@ export class Application {
 
   stop(reason?: string): void {
     logger.info('Shutting down server...', { reason })
-    getHermesRuntime()
-      ?.executeAction({ type: 'stop' })
-      .catch(() => {})
     removeServerConfigSync()
 
     // Immediate exit without graceful shutdown. Chromium may kill us on update/restart,

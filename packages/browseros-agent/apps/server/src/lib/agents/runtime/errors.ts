@@ -24,13 +24,7 @@ export class ActionNotSupportedError extends Error {
   }
 }
 
-/**
- * Higher-level "runtime is not ready to take a turn" error. Mirrors
- * `ContainerNotReadyError` from the container layer but lives at the
- * runtime layer so callers can differentiate "container abstraction
- * says no" from "host CLI is missing" without reaching down two
- * layers.
- */
+/** Higher-level "runtime is not ready to take a turn" error. */
 export class RuntimeNotReadyError extends Error {
   constructor(
     public readonly adapterId: string,

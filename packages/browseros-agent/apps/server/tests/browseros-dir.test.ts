@@ -14,8 +14,6 @@ import {
   getCacheDir,
   getDbPath,
   getSessionsDir,
-  getVmCacheDir,
-  getVmDisksDir,
   logDevelopmentBrowserosDir,
 } from '../src/lib/browseros-dir'
 import { logger } from '../src/lib/logger'
@@ -126,16 +124,7 @@ describe('getBrowserosDir', () => {
       join(homedir(), PATHS.BROWSEROS_DIR_NAME, 'cache'),
     )
   })
-
-  it('uses a vm cache directory below cache', () => {
-    process.env.NODE_ENV = 'development'
-
-    expect(getVmCacheDir()).toBe(
-      join(homedir(), '.browseros-dev', 'cache', 'vm'),
-    )
-  })
-
-  it('does not create lazy monitoring directories during startup setup', async () => {
+  it('creates only the startup-owned directories during startup setup', async () => {
     const browserosDir = mkdtempSync(join(tmpdir(), 'browseros-dir-test-'))
     process.env.BROWSEROS_DIR = browserosDir
 
@@ -143,7 +132,8 @@ describe('getBrowserosDir', () => {
       await ensureBrowserosDir()
 
       expect(existsSync(getSessionsDir())).toBe(true)
-      expect(existsSync(getVmDisksDir())).toBe(true)
+      expect(existsSync(join(browserosDir, 'cache', 'vm'))).toBe(false)
+      expect(existsSync(join(browserosDir, 'vm'))).toBe(false)
       expect(existsSync(join(browserosDir, 'lazy-monitoring'))).toBe(false)
       expect(existsSync(join(browserosDir, 'lazy-monitoring', 'runs'))).toBe(
         false,

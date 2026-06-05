@@ -256,19 +256,6 @@ describe('HostProcessAgentRuntime', () => {
       expect(r.authCalls).toBe(1)
     })
 
-    it('throws ActionNotSupportedError for container-only actions', async () => {
-      const r = makeRuntime()
-      await expect(r.executeAction({ type: 'install' })).rejects.toBeInstanceOf(
-        ActionNotSupportedError,
-      )
-      await expect(r.executeAction({ type: 'start' })).rejects.toBeInstanceOf(
-        ActionNotSupportedError,
-      )
-      await expect(
-        r.executeAction({ type: 'reset-soft' }),
-      ).rejects.toBeInstanceOf(ActionNotSupportedError)
-    })
-
     it('gates on getCapabilities() — subclass-filtered actions throw', async () => {
       class FilteredRuntime extends TestRuntime {
         override getCapabilities() {
@@ -280,7 +267,6 @@ describe('HostProcessAgentRuntime', () => {
         r.executeAction({ type: 'reinstall-cli' }),
       ).rejects.toBeInstanceOf(ActionNotSupportedError)
       expect(r.reinstallCalls).toBe(0)
-      // Whitelisted action still goes through.
       await r.executeAction({ type: 'check-auth' })
       expect(r.authCalls).toBe(1)
     })

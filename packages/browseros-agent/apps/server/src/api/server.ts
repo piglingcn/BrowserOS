@@ -16,7 +16,6 @@ import { cors } from 'hono/cors'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { HttpAgentError } from '../agent/errors'
 import { INLINED_ENV } from '../env'
-import { ensureHermesRuntimeReady } from '../lib/agents/runtime'
 import { KlavisClient } from '../lib/clients/klavis/klavis-client'
 import { initializeOAuth, shutdownOAuth } from '../lib/clients/oauth'
 import { getDb } from '../lib/db'
@@ -101,13 +100,6 @@ export async function createHttpServer(config: HttpServerConfig) {
         browserosServerPort: port,
         resourcesDir,
         browser,
-        ensureVmRuntimeReady: async (adapter) => {
-          if (process.env.NODE_ENV === 'production') return
-          switch (adapter) {
-            case 'hermes':
-              await ensureHermesRuntimeReady({ resourcesDir })
-          }
-        },
       }),
     )
 

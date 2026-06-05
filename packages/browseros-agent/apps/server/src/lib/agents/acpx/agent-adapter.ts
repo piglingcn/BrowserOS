@@ -5,11 +5,8 @@
  */
 
 import type { AgentDefinition, AgentSessionId } from '../agent-types'
-import {
-  prepareClaudeCodeContext,
-  prepareCodexContext,
-  prepareHermesContext,
-} from '../runtime'
+import { prepareHermesContext } from '../hermes/hermes-context'
+import { prepareClaudeCodeContext, prepareCodexContext } from '../runtime'
 
 export interface PreparedAcpxAgentContext {
   cwd: string
@@ -20,10 +17,7 @@ export interface PreparedAcpxAgentContext {
   useBrowserosMcp: boolean
   /**
    * Hostname the agent should use to reach the BrowserOS HTTP MCP server.
-   * Default `127.0.0.1` is correct for host-process adapters (claude, codex,
-   * Phase A host-mode hermes). Container-spawned adapters override this to
-   * `host.containers.internal` so the URL injected into ACP newSession's
-   * mcpServers resolves from inside the container.
+   * Default `127.0.0.1` is correct for host-process adapters.
    */
   browserosMcpHost?: string
 }

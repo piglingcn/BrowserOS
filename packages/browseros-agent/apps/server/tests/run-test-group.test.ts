@@ -38,9 +38,8 @@ describe('test groups', () => {
     expect(listAllGroups()).toContain('lib')
   })
 
-  it('runs root and directory integration tests in the integration group', () => {
+  it('runs available integration tests in the integration group', () => {
     expect(getAtomicGroupTargets('integration')).toEqual([
-      './tests/integration',
       './tests/server.integration.test.ts',
     ])
   })

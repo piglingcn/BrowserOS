@@ -4,14 +4,11 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  AgentHarnessService,
-  type EnsureVmRuntimeReady,
-} from '../../../../src/api/services/agents/agent-harness-service'
+import { AgentHarnessService } from '../../../../src/api/services/agents/agent-harness-service'
 import type {
   AgentDefinition,
   AgentSessionId,
@@ -507,7 +504,7 @@ describe('AgentHarnessService', () => {
 
       const homeDir = join(
         browserosDir,
-        'vm',
+        'agents',
         'hermes',
         'harness',
         agent.id,
@@ -519,59 +516,6 @@ describe('AgentHarnessService', () => {
       expect(yaml).toContain('"anthropic/claude-haiku-4.5"')
       expect(env).toContain('OPENROUTER_API_KEY=sk-or-v1-test-key')
     })
-  })
-
-  it('ensures the VM runtime when a Hermes agent is created', async () => {
-    const readinessCalls: string[] = []
-    await withHermesBrowserosDir(
-      async ({ service }) => {
-        await service.createAgent({
-          name: 'Hermes bot',
-          adapter: 'hermes',
-          providerType: 'openrouter',
-          apiKey: 'sk-or-v1-test-key',
-          modelId: 'anthropic/claude-haiku-4.5',
-        })
-
-        expect(readinessCalls).toEqual(['hermes'])
-      },
-      {
-        ensureVmRuntimeReady: async (adapter) => {
-          readinessCalls.push(adapter)
-        },
-      },
-    )
-  })
-
-  it('rolls back Hermes agent creation when runtime startup fails', async () => {
-    await withHermesBrowserosDir(
-      async ({ agents, browserosDir, service }) => {
-        await expect(
-          service.createAgent({
-            name: 'Broken Hermes',
-            adapter: 'hermes',
-            providerType: 'openrouter',
-            apiKey: 'sk-or-v1-test-key',
-            modelId: 'anthropic/claude-haiku-4.5',
-          }),
-        ).rejects.toThrow('hermes start failed')
-        const homeDir = join(
-          browserosDir,
-          'vm',
-          'hermes',
-          'harness',
-          'agent-1',
-          'home',
-        )
-        expect(agents).toHaveLength(0)
-        expect(existsSync(homeDir)).toBe(false)
-      },
-      {
-        ensureVmRuntimeReady: async () => {
-          throw new Error('hermes start failed')
-        },
-      },
-    )
   })
 
   it('rejects Hermes agent creation when apiKey is missing', async () => {
@@ -624,7 +568,7 @@ describe('AgentHarnessService', () => {
 
       const homeDir = join(
         browserosDir,
-        'vm',
+        'agents',
         'hermes',
         'harness',
         agent.id,
@@ -657,7 +601,7 @@ describe('AgentHarnessService', () => {
 
       const homeDir = join(
         browserosDir,
-        'vm',
+        'agents',
         'hermes',
         'harness',
         agent.id,
@@ -755,7 +699,6 @@ async function withHermesBrowserosDir<T>(
     browserosDir: string
     service: AgentHarnessService
   }) => Promise<T>,
-  options: { ensureVmRuntimeReady?: EnsureVmRuntimeReady } = {},
 ): Promise<T> {
   const browserosDir = mkdtempSync(join(tmpdir(), 'browseros-hermes-test-'))
   const agents: AgentDefinition[] = []
@@ -763,7 +706,6 @@ async function withHermesBrowserosDir<T>(
     const service = new AgentHarnessService({
       agentStore: createAgentStore(agents) as AgentStore,
       browserosDir,
-      ensureVmRuntimeReady: options.ensureVmRuntimeReady,
       runtime: stubRuntime(),
     })
     return await run({ agents, browserosDir, service })

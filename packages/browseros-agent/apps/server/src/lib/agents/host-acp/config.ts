@@ -4,7 +4,17 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-export type HostAcpAdapter = 'claude' | 'codex'
+export type HostAcpAdapter = 'claude' | 'codex' | 'hermes'
+
+export interface HostAcpAdapterConfig {
+  displayName: string
+  nativeBinary: string
+  acpCommand: string
+  acpPackageSpec?: string
+  acpPackageName?: string
+  acpPackageVersionRange?: string
+  acpBin?: string
+}
 
 export const HOST_ACP_ADAPTER_CONFIG = {
   claude: {
@@ -25,19 +35,30 @@ export const HOST_ACP_ADAPTER_CONFIG = {
     acpPackageVersionRange: '^0.12.0',
     acpBin: 'codex-acp',
   },
-} as const satisfies Record<
-  HostAcpAdapter,
-  {
-    displayName: string
-    nativeBinary: string
-    acpCommand: string
-    acpPackageSpec: string
-    acpPackageName: string
-    acpPackageVersionRange: string
-    acpBin: string
-  }
->
+  hermes: {
+    displayName: 'Hermes',
+    nativeBinary: 'hermes',
+    acpCommand: 'hermes acp',
+  },
+} as const satisfies Record<HostAcpAdapter, HostAcpAdapterConfig>
 
 export function isHostAcpAdapter(value: string): value is HostAcpAdapter {
-  return value === 'claude' || value === 'codex'
+  return value === 'claude' || value === 'codex' || value === 'hermes'
+}
+
+export function hasAcpPackageConfig(
+  config: HostAcpAdapterConfig,
+): config is HostAcpAdapterConfig &
+  Required<
+    Pick<
+      HostAcpAdapterConfig,
+      'acpPackageSpec' | 'acpPackageName' | 'acpPackageVersionRange' | 'acpBin'
+    >
+  > {
+  return Boolean(
+    config.acpPackageSpec &&
+      config.acpPackageName &&
+      config.acpPackageVersionRange &&
+      config.acpBin,
+  )
 }

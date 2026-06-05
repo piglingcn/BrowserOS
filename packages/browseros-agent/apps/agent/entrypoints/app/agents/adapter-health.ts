@@ -53,6 +53,8 @@ function launchSourceLabel(
       return 'bundled Bun'
     case 'host-npx':
       return 'npx'
+    case 'host-cli':
+      return 'host CLI'
     default:
       return null
   }

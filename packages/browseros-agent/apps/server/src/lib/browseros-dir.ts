@@ -36,22 +36,6 @@ export function getDbPath(): string {
   return join(getBrowserosDir(), PATHS.DB_DIR_NAME, PATHS.DB_FILE_NAME)
 }
 
-export function getVmCacheDir(): string {
-  return join(getCacheDir(), 'vm')
-}
-
-export function getLimaHomeDir(): string {
-  return join(getBrowserosDir(), 'lima')
-}
-
-export function getVmStateDir(): string {
-  return join(getBrowserosDir(), 'vm')
-}
-
-export function getVmDisksDir(): string {
-  return getVmCacheDir()
-}
-
 export function getServerConfigPath(): string {
   return join(getBrowserosDir(), PATHS.SERVER_CONFIG_FILE_NAME)
 }
@@ -78,7 +62,6 @@ export function removeServerConfigSync(): void {
 export async function ensureBrowserosDir(): Promise<void> {
   logDevelopmentBrowserosDir()
   await mkdir(getSessionsDir(), { recursive: true })
-  await mkdir(getVmDisksDir(), { recursive: true })
 }
 
 export async function cleanOldSessions(): Promise<void> {

@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { prepareAcpxAgentContext } from '../../../src/lib/agents/acpx/agent-adapter'
@@ -121,9 +121,21 @@ describe('prepareAcpxAgentContext', () => {
     )
   })
 
-  it('prepares Hermes with HERMES_HOME pointing at the in-container agent home (translated from the host path)', async () => {
+  it('prepares Hermes with HERMES_HOME pointing at the host agent home', async () => {
     const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-adapters-'))
     tempDirs.push(browserosDir)
+    const legacyHome = join(
+      browserosDir,
+      'vm',
+      'hermes',
+      'harness',
+      'hermes-agent',
+      'home',
+    )
+    await mkdir(legacyHome, { recursive: true })
+    await writeFile(join(legacyHome, 'config.yaml'), 'legacy config\n')
+    await writeFile(join(legacyHome, '.env'), 'LEGACY_KEY=1\n')
+
     const prepared = await prepareAcpxAgentContext({
       browserosDir,
       agent: makeAgent('hermes'),
@@ -134,12 +146,15 @@ describe('prepareAcpxAgentContext', () => {
       message: 'remember this',
     })
 
-    // HERMES_HOME must be the *container-side* path (under /data) so the
-    // hermes binary running inside the container can actually open it.
-    // The host-side seeded files are reachable via the bind mount.
     expect(prepared.commandEnv.HERMES_HOME).toBe(
-      '/data/agents/harness/hermes-agent/home',
+      join(browserosDir, 'agents', 'hermes', 'harness', 'hermes-agent', 'home'),
     )
+    await expect(
+      readFile(join(prepared.commandEnv.HERMES_HOME, 'config.yaml'), 'utf8'),
+    ).resolves.toBe('legacy config\n')
+    await expect(
+      readFile(join(prepared.commandEnv.HERMES_HOME, '.env'), 'utf8'),
+    ).resolves.toBe('LEGACY_KEY=1\n')
     expect(prepared.commandEnv).not.toHaveProperty('AGENT_HOME')
     expect(prepared.commandEnv).not.toHaveProperty('CODEX_HOME')
     expect(prepared.commandEnv).not.toHaveProperty('CLAUDE_CONFIG_DIR')

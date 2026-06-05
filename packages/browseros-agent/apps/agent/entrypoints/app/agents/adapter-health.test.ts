@@ -56,5 +56,13 @@ describe('adapter health helpers', () => {
         adapterLaunchSource: 'host-npx',
       }),
     ).toBe('claude 1.2.3 · npx')
+    expect(
+      adapterHealthMeta({
+        healthy: true,
+        checkedAt: 1,
+        version: 'hermes 0.9.0',
+        adapterLaunchSource: 'host-cli',
+      }),
+    ).toBe('hermes 0.9.0 · host CLI')
   })
 })

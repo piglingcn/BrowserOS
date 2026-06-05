@@ -12,7 +12,11 @@ import {
 } from './binary-resolver'
 import { resolveBundledBun } from './bundled-bun'
 import { resolveBundledNativeBinary } from './bundled-native-binary'
-import { HOST_ACP_ADAPTER_CONFIG, type HostAcpAdapter } from './config'
+import {
+  HOST_ACP_ADAPTER_CONFIG,
+  type HostAcpAdapter,
+  hasAcpPackageConfig,
+} from './config'
 import { probeNpxPackageCache } from './npx-package-cache'
 
 export { probeNpxPackageCache } from './npx-package-cache'
@@ -40,6 +44,7 @@ export type AdapterAuthState =
 export type AdapterLaunchSource =
   | 'bundled-bun'
   | 'host-npx'
+  | 'host-cli'
   | 'runtime'
   | 'none'
 export type PackageCacheState = 'cached' | 'fetch-required' | 'unknown'
@@ -97,47 +102,55 @@ export async function detectHostAdapter(
   const resolveBundledNative =
     options.resolveBundledNativeBinary ?? resolveBundledNativeBinary
 
-  const [nativeCli, launch] = await Promise.all([
-    resolveNativeCli({
-      adapter,
-      nativeBinary: config.nativeBinary,
-      resourcesDir: options.resourcesDir,
-      env,
-      platform,
-      resolveBinary,
-      resolveBundledNativeBinary: resolveBundledNative,
-    }).catch(() => null),
-    detectAdapterLaunch({
-      adapter,
-      platform,
-      resourcesDir: options.resourcesDir,
-      resolveBinary,
-      probePackageCache,
-      resolveBundledBun: resolveBun,
-    }),
-  ])
+  const nativeCli = await resolveNativeCli({
+    adapter,
+    nativeBinary: config.nativeBinary,
+    resourcesDir: options.resourcesDir,
+    env,
+    platform,
+    resolveBinary,
+    resolveBundledNativeBinary: resolveBundledNative,
+  }).catch(() => null)
+  const launch = await detectAdapterLaunch({
+    adapter,
+    nativeCli,
+    platform,
+    resourcesDir: options.resourcesDir,
+    resolveBinary,
+    probePackageCache,
+    resolveBundledBun: resolveBun,
+  })
 
   const nativeCliState: NativeCliState = nativeCli ? 'present' : 'missing'
   let version: string | undefined
+  let versionProbeOk = false
   let authState: AdapterAuthState = 'unknown'
   if (nativeCli) {
     const probes = await Promise.all([
       probeVersion(nativeCli, runCommand, timeoutMs),
       probeAuth(adapter, nativeCli, runCommand, timeoutMs),
     ])
-    version = probes[0]
+    versionProbeOk = probes[0].ok
+    version = probes[0].version
     authState = probes[1]
   }
+  const launchKind = hasAcpPackageConfig(config) ? 'package' : 'host-cli'
   const installState = determineInstallState({
     nativeCliState,
     adapterLaunchSource: launch.source,
     packageCacheState: launch.packageCacheState,
   })
-  const readiness = determineReadiness({ authState, launch })
+  const readiness = determineReadiness({
+    authState,
+    launch,
+    launchKind,
+    versionProbeOk,
+  })
   const reason = reasonFor({
     displayName: config.displayName,
+    launchKind,
     readiness,
-    authState,
+    versionProbeOk,
   })
 
   return {
@@ -176,6 +189,7 @@ async function resolveNativeCli(input: {
 
 async function detectAdapterLaunch(input: {
   adapter: HostAcpAdapter
+  nativeCli: ResolvedHostBinary | null
   platform: NodeJS.Platform
   resourcesDir?: string | null
   resolveBinary: (name: string) => Promise<ResolvedHostBinary | null>
@@ -188,6 +202,14 @@ async function detectAdapterLaunch(input: {
   source: AdapterLaunchSource
   packageCacheState: PackageCacheState
 }> {
+  const config = HOST_ACP_ADAPTER_CONFIG[input.adapter]
+  if (!hasAcpPackageConfig(config)) {
+    return {
+      source: input.nativeCli ? 'host-cli' : 'none',
+      packageCacheState: 'unknown',
+    }
+  }
+
   const bundledBun = input.resolveBundledBun({
     resourcesDir: input.resourcesDir,
     platform: input.platform,
@@ -199,7 +221,6 @@ async function detectAdapterLaunch(input: {
   const npx = await input.resolveBinary('npx').catch(() => null)
   if (!npx) return { source: 'none', packageCacheState: 'unknown' }
 
-  const config = HOST_ACP_ADAPTER_CONFIG[input.adapter]
   const cached = await input
     .probePackageCache(config.acpPackageName, config.acpPackageVersionRange)
     .catch(() => false)
@@ -213,14 +234,17 @@ async function probeVersion(
   binary: ResolvedHostBinary,
   runCommand: HostCommandRunner,
   timeoutMs: number,
-): Promise<string | undefined> {
+): Promise<{ ok: boolean; version?: string }> {
   const result = await runCommand(binary.path, ['--version'], {
     env: binary.env,
     timeoutMs,
   }).catch(() => null)
-  if (!result || result.exitCode !== 0) return undefined
+  if (!result || result.exitCode !== 0) return { ok: false }
   const firstLine = result.stdout.trim().split(/\r?\n/)[0]?.trim()
-  return firstLine || undefined
+  return {
+    ok: true,
+    ...(firstLine ? { version: firstLine } : {}),
+  }
 }
 
 async function probeAuth(
@@ -229,6 +253,8 @@ async function probeAuth(
   runCommand: HostCommandRunner,
   timeoutMs: number,
 ): Promise<AdapterAuthState> {
+  if (adapter === 'hermes') return 'not-applicable'
+
   if (adapter === 'claude') {
     const result = await runCommand(binary.path, ['auth', 'status'], {
       env: binary.env,
@@ -302,8 +328,11 @@ function determineInstallState(input: {
 function determineReadiness(input: {
   authState: AdapterAuthState
   launch: { source: AdapterLaunchSource; packageCacheState: PackageCacheState }
+  launchKind: 'package' | 'host-cli'
+  versionProbeOk: boolean
 }): AdapterReadiness {
   if (input.launch.source === 'none') return 'needs-install'
+  if (input.launchKind === 'host-cli' && !input.versionProbeOk) return 'unknown'
   if (input.authState === 'unauthenticated') return 'needs-auth'
   if (input.launch.packageCacheState === 'fetch-required') {
     return 'will-fetch-package'
@@ -314,19 +343,26 @@ function determineReadiness(input: {
 
 function reasonFor(input: {
   displayName: string
+  launchKind: 'package' | 'host-cli'
   readiness: AdapterReadiness
-  authState: AdapterAuthState
+  versionProbeOk: boolean
 }): string | undefined {
   switch (input.readiness) {
     case 'needs-auth':
       return `${input.displayName} is installed but is not authenticated.`
     case 'needs-install':
+      if (input.launchKind === 'host-cli') {
+        return `${input.displayName} CLI is not installed.`
+      }
       return `${input.displayName} adapter package cannot launch because neither bundled Bun nor npx is available.`
     case 'will-fetch-package':
       return `${input.displayName} adapter package will be downloaded on first use.`
     case 'diagnostic-warning':
       return `${input.displayName} can launch, but authentication could not be verified.`
     case 'unknown':
+      if (input.launchKind === 'host-cli' && !input.versionProbeOk) {
+        return `${input.displayName} CLI was found but failed its version probe.`
+      }
       return `${input.displayName} readiness could not be checked.`
     default:
       return undefined

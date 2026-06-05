@@ -111,12 +111,6 @@ export abstract class HostProcessAgentRuntime implements AgentRuntime {
         return this.handleReinstallCli()
       case 'check-auth':
         return this.checkAuth()
-      default:
-        throw new ActionNotSupportedError(
-          this.descriptor.adapterId,
-          action.type,
-          this.getCapabilities(),
-        )
     }
   }
 

@@ -117,7 +117,12 @@ export interface HarnessAdapterHealth {
   nativeCliState?: 'present' | 'missing' | 'unknown'
   authState?: 'authenticated' | 'unauthenticated' | 'not-applicable' | 'unknown'
   version?: string
-  adapterLaunchSource?: 'bundled-bun' | 'host-npx' | 'runtime' | 'none'
+  adapterLaunchSource?:
+    | 'bundled-bun'
+    | 'host-npx'
+    | 'host-cli'
+    | 'runtime'
+    | 'none'
   packageCacheState?: 'cached' | 'fetch-required' | 'unknown'
 }
 

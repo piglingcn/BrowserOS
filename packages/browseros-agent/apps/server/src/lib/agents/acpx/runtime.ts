@@ -28,9 +28,11 @@ import {
   MAIN_AGENT_SESSION_ID,
 } from '../agent-types'
 import { resolveBundledBun } from '../host-acp/bundled-bun'
-import { withBundledNativeBinaryPath } from '../host-acp/bundled-native-binary'
+import {
+  resolveBundledNativeBinary,
+  withBundledNativeBinaryPath,
+} from '../host-acp/bundled-native-binary'
 import { HOST_ACP_ADAPTER_CONFIG } from '../host-acp/config'
-import { getHermesRuntime } from '../runtime'
 import type {
   AgentHistoryPage,
   AgentPromptInput,
@@ -741,12 +743,11 @@ function createBrowserosAgentRegistry(input: {
       const lower = agentName.trim().toLowerCase()
 
       if (lower === 'hermes') {
-        const runtime = getHermesRuntime()
-        if (runtime)
-          return runtime.buildExecArgv(runtime.getAcpExecSpec(input.commandEnv))
-        // No runtime registered (tests, dev fallback, non-darwin) →
-        // host-process spawn of the bare hermes binary.
-        return wrapCommandWithEnv('hermes acp', input.commandEnv)
+        const launch = resolveHermesHostAcpAdapterCommand({
+          resourcesDir: input.resourcesDir,
+          commandEnv: input.commandEnv,
+        })
+        return wrapCommandWithEnv(launch.command, launch.commandEnv)
       }
 
       if (lower === 'claude' || lower === 'codex') {
@@ -768,6 +769,39 @@ function createBrowserosAgentRegistry(input: {
 
       return registry.resolve(agentName)
     },
+  }
+}
+
+/** Resolves Hermes ACP launch through bundled CLI or the user's login shell. */
+function resolveHermesHostAcpAdapterCommand(input: {
+  resourcesDir: string | null
+  commandEnv: Record<string, string>
+}): { command: string; commandEnv: Record<string, string> } {
+  const commandEnv = withBundledNativeBinaryPath({
+    env: input.commandEnv,
+    resourcesDir: input.resourcesDir,
+  })
+  const bundledHermes = resolveBundledNativeBinary({
+    adapter: 'hermes',
+    resourcesDir: input.resourcesDir,
+    env: commandEnv,
+  })
+  if (bundledHermes) {
+    return {
+      command: `${shellQuote(bundledHermes.path)} acp`,
+      commandEnv,
+    }
+  }
+
+  const command = HOST_ACP_ADAPTER_CONFIG.hermes.acpCommand
+  if (process.platform === 'win32') {
+    return { command, commandEnv }
+  }
+
+  const shell = process.env.SHELL?.trim() || 'sh'
+  return {
+    command: `${shellQuote(shell)} -lic ${shellQuote(command)}`,
+    commandEnv,
   }
 }
 

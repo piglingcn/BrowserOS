@@ -126,21 +126,10 @@ export type TurnLifecycleListener = (
   event: TurnLifecycleEvent,
 ) => void
 
-export type HarnessManagedVmAdapter = Extract<
-  AgentDefinition['adapter'],
-  'hermes'
->
-
-/** Starts harness-owned VM/container runtimes at the agent creation boundary. */
-export type EnsureVmRuntimeReady = (
-  adapter: HarnessManagedVmAdapter,
-) => Promise<void>
-
 export class AgentHarnessService {
   private readonly agentStore: AgentStore
   private readonly runtime: AgentRuntime
   private readonly browserosDir: string
-  private readonly ensureVmRuntimeReady: EnsureVmRuntimeReady | null
   private readonly turnRegistry: TurnRegistry
   private readonly messageQueue: FileMessageQueue
   private readonly turnLifecycleListeners = new Set<TurnLifecycleListener>()
@@ -157,7 +146,6 @@ export class AgentHarnessService {
       browserosDir?: string
       resourcesDir?: string
       browserosServerPort?: number
-      ensureVmRuntimeReady?: EnsureVmRuntimeReady
       turnRegistry?: TurnRegistry
       messageQueue?: FileMessageQueue
     } = {},
@@ -171,7 +159,6 @@ export class AgentHarnessService {
         resourcesDir: deps.resourcesDir,
         browserosServerPort: deps.browserosServerPort,
       })
-    this.ensureVmRuntimeReady = deps.ensureVmRuntimeReady ?? null
     this.turnRegistry = deps.turnRegistry ?? new TurnRegistry()
     this.messageQueue =
       deps.messageQueue ??
@@ -512,7 +499,6 @@ export class AgentHarnessService {
     if (agent.adapter === 'hermes') {
       try {
         await this.writeHermesPerAgentProvider(agent.id, input)
-        await this.ensureVmRuntimeReady?.(agent.adapter)
       } catch (err) {
         await this.agentStore.delete(agent.id).catch(() => {})
         await this.deleteHermesPerAgentProvider(agent.id).catch(

@@ -35,7 +35,6 @@ import type { AgentHistoryPage, AgentStreamEvent } from '../../lib/agents/types'
 import {
   type AgentDefinitionWithActivity,
   AgentHarnessService,
-  type EnsureVmRuntimeReady,
   HermesProviderConfigInvalidError,
   InvalidAgentUpdateError,
   MessageQueueFullError,
@@ -109,8 +108,6 @@ type AgentRouteDeps = {
   browser?: Pick<Browser, 'resolveTabIds'>
   browserosServerPort?: number
   resourcesDir?: string
-  /** Optional hook for harness-owned VM/container runtimes. */
-  ensureVmRuntimeReady?: EnsureVmRuntimeReady
   /** Optional override; defaults to a fresh in-memory checker. */
   adapterHealth?: Pick<AdapterHealthChecker, 'getHealth'>
   onTurnLifecycle?: import('../services/agents/agent-harness-service').TurnLifecycleListener
@@ -133,7 +130,6 @@ export function createAgentRoutes(deps: AgentRouteDeps = {}) {
     new AgentHarnessService({
       browserosServerPort: deps.browserosServerPort,
       resourcesDir: deps.resourcesDir,
-      ensureVmRuntimeReady: deps.ensureVmRuntimeReady,
     })
   if (deps.onTurnLifecycle && service instanceof AgentHarnessService) {
     service.onTurnLifecycle(deps.onTurnLifecycle)

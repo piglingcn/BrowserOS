@@ -50,22 +50,6 @@ describe('Application.start', () => {
     expect(loggerError).not.toHaveBeenCalled()
   })
 
-  it('does not start the Hermes runtime on startup', async () => {
-    const {
-      Application,
-      configureHermesRuntime,
-      createHttpServer,
-      hermesService,
-    } = await setupApplicationTest()
-    const app = new Application(config)
-
-    await app.start()
-
-    expect(createHttpServer).toHaveBeenCalledTimes(1)
-    expect(configureHermesRuntime).not.toHaveBeenCalled()
-    expect(hermesService.executeAction).not.toHaveBeenCalled()
-  })
-
   it('stores the database below the BrowserOS directory instead of the execution directory', async () => {
     const originalBrowserosDir = process.env.BROWSEROS_DIR
     process.env.BROWSEROS_DIR = '/tmp/browseros-dogfood'
@@ -163,15 +147,6 @@ async function setupApplicationTest() {
   spyOn(sentryModule.Sentry, 'setUser').mockImplementation(() => {})
   spyOn(sentryModule.Sentry, 'captureException').mockImplementation(() => {})
 
-  const hermesExecuteAction = mock(async () => {})
-  const fakeHermesRuntime = { executeAction: hermesExecuteAction } as never
-  const configureHermesRuntime = spyOn(
-    runtimeModule,
-    'configureHermesRuntime',
-  ).mockImplementation(() => fakeHermesRuntime)
-  spyOn(runtimeModule, 'getHermesRuntime').mockImplementation(
-    () => fakeHermesRuntime,
-  )
   spyOn(runtimeModule, 'configureClaudeRuntime').mockImplementation(
     () => ({}) as never,
   )
@@ -189,7 +164,5 @@ async function setupApplicationTest() {
     loggerInfo,
     loggerWarn,
     initializeDb,
-    configureHermesRuntime,
-    hermesService: { executeAction: hermesExecuteAction },
   }
 }

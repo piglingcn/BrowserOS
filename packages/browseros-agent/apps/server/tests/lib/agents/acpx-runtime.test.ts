@@ -23,13 +23,8 @@ import {
 import { resolveAgentRuntimePaths } from '../../../src/lib/agents/acpx/runtime-context'
 import { saveLatestRuntimeState } from '../../../src/lib/agents/acpx/runtime-state'
 import type { AgentDefinition } from '../../../src/lib/agents/agent-types'
-import {
-  getAgentRuntimeRegistry,
-  HermesContainerRuntime,
-  resetAgentRuntimeRegistry,
-} from '../../../src/lib/agents/runtime'
+import { resetAgentRuntimeRegistry } from '../../../src/lib/agents/runtime'
 import type { AgentStreamEvent } from '../../../src/lib/agents/types'
-import type { ManagedContainerDeps } from '../../../src/lib/container/managed'
 
 describe('AcpxRuntime', () => {
   const tempDirs: string[] = []
@@ -1201,66 +1196,7 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
     },
   )
 
-  it('resolves the Hermes adapter to a container `nerdctl exec hermes acp` command when a HermesContainerRuntime is registered', async () => {
-    const browserosDir = await mkdtemp(
-      join(tmpdir(), 'browseros-acpx-browseros-'),
-    )
-    const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
-    tempDirs.push(browserosDir, stateDir)
-    const fakeManagedDeps: ManagedContainerDeps = {
-      cli: {} as ManagedContainerDeps['cli'],
-      loader: {} as ManagedContainerDeps['loader'],
-      vm: {} as ManagedContainerDeps['vm'],
-      limactlPath: '/opt/homebrew/bin/limactl',
-      limaHome: '/Users/dev/.browseros-dev/lima',
-      vmName: 'browseros-vm',
-      lockDir: stateDir,
-    }
-    const hermesRuntime = new HermesContainerRuntime(fakeManagedDeps, {
-      hermesHarnessHostDir: join(browserosDir, 'vm', 'hermes', 'harness'),
-    })
-    getAgentRuntimeRegistry().register(hermesRuntime)
-
-    const calls: Array<{ method: string; input: unknown }> = []
-    const runtime = new AcpxRuntime({
-      browserosDir,
-      stateDir,
-      runtimeFactory: (options) => {
-        calls.push({ method: 'createRuntime', input: options })
-        return createFakeAcpRuntime(calls)
-      },
-    })
-    const agent = makeAgent({ id: 'agent-1', adapter: 'hermes' })
-
-    await collectStream(
-      await runtime.send({
-        agent,
-        sessionId: 'main',
-        sessionKey: agent.sessionKey,
-        message: 'hi',
-        permissionMode: 'approve-all',
-      }),
-    )
-
-    const command =
-      getCreateRuntimeOptions(calls).agentRegistry.resolve('hermes')
-    // Container-spawn path uses limactl shell + nerdctl exec; no host-
-    // process bash/tee workaround (those were Phase A only).
-    expect(command).toContain('env LIMA_HOME=/Users/dev/.browseros-dev/lima')
-    expect(command).toContain(
-      '/opt/homebrew/bin/limactl shell --workdir / browseros-vm --',
-    )
-    expect(command).toContain('nerdctl exec -i')
-    expect(command).toContain('hermes acp')
-    expect(command).toContain('HERMES_HOME=')
-    expect(command).not.toContain('bash -c')
-    expect(command).not.toContain('tee /dev/null')
-    expect(command).not.toContain('AGENT_HOME=')
-    expect(command).not.toContain('CODEX_HOME=')
-    expect(command).not.toContain('CLAUDE_CONFIG_DIR=')
-  })
-
-  it('falls back to a host-process `hermes acp` command when no HermesGatewayAccessor is wired', async () => {
+  it('resolves the Hermes adapter to a host-process `hermes acp` command', async () => {
     const browserosDir = await mkdtemp(
       join(tmpdir(), 'browseros-acpx-browseros-'),
     )
@@ -1289,16 +1225,54 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
 
     const command =
       getCreateRuntimeOptions(calls).agentRegistry.resolve('hermes')
-    // Host-process fallback: bare `hermes acp` with HERMES_HOME injected
-    // via wrapCommandWithEnv. No limactl/nerdctl chain — used by tests
-    // and as a defensive escape hatch when the container service hasn't
-    // been wired yet.
     expect(command).toContain('hermes acp')
     expect(command).toContain('env HERMES_HOME=')
+    if (process.platform !== 'win32') {
+      expect(command).toContain(' -lic ')
+    }
     expect(command).not.toContain('limactl')
     expect(command).not.toContain('nerdctl')
     expect(command).not.toContain('bash -c')
     expect(command).not.toContain('tee /dev/null')
+  })
+
+  it('launches bundled Hermes by absolute path when packaged resources include it', async () => {
+    const browserosDir = await mkdtemp(
+      join(tmpdir(), 'browseros-acpx-browseros-'),
+    )
+    const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
+    const resourcesDir = await mkdtemp(
+      join(tmpdir(), 'browseros-acpx-resources-'),
+    )
+    tempDirs.push(browserosDir, stateDir, resourcesDir)
+    const hermesPath = await writeFakeBundledNative(resourcesDir, 'hermes')
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      browserosDir,
+      resourcesDir,
+      stateDir,
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const agent = makeAgent({ id: 'agent-1', adapter: 'hermes' })
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'hi',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    const command =
+      getCreateRuntimeOptions(calls).agentRegistry.resolve('hermes')
+    expect(command).toContain(`'${hermesPath}' acp`)
+    expect(command).toContain('env HERMES_HOME=')
+    expect(command).not.toContain(' -lic ')
   })
 
   it('does not reuse an Acpx runtime across different command identities', async () => {
@@ -1539,11 +1513,18 @@ async function createLatestRuntimeStateForTest(input: {
 }
 
 async function writeFakeBundledBun(resourcesDir: string): Promise<string> {
-  const bunPath = join(resourcesDir, 'bin', 'third_party', 'bun')
-  await mkdir(dirname(bunPath), { recursive: true })
-  await writeFile(bunPath, '#!/bin/sh\n')
-  await chmod(bunPath, 0o755)
-  return bunPath
+  return writeFakeBundledNative(resourcesDir, 'bun')
+}
+
+async function writeFakeBundledNative(
+  resourcesDir: string,
+  binaryName: string,
+): Promise<string> {
+  const binaryPath = join(resourcesDir, 'bin', 'third_party', binaryName)
+  await mkdir(dirname(binaryPath), { recursive: true })
+  await writeFile(binaryPath, '#!/bin/sh\n')
+  await chmod(binaryPath, 0o755)
+  return binaryPath
 }
 
 function makeSessionRecord(input: {

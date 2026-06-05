@@ -5,26 +5,28 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  ensureHermesAgentHomeHostDir,
   getHermesAgentHomeHostDir,
   getHermesHarnessHostDir,
+  getLegacyHermesAgentHomeHostDir,
   writeHermesPerAgentProvider,
 } from '../../../../src/lib/agents/hermes/hermes-paths'
 import { getHermesProviderMapping } from '../../../../src/lib/agents/hermes/hermes-provider-map'
 
 describe('Hermes adapter helpers', () => {
-  it('resolves Hermes state under the BrowserOS VM state root', () => {
+  it('resolves Hermes state under the BrowserOS agents directory', () => {
     const browserosDir = '/tmp/browseros-test'
 
     expect(getHermesHarnessHostDir(browserosDir)).toBe(
-      '/tmp/browseros-test/vm/hermes/harness',
+      '/tmp/browseros-test/agents/hermes/harness',
     )
     expect(
       getHermesAgentHomeHostDir({ browserosDir, agentId: 'agent-1' }),
-    ).toBe('/tmp/browseros-test/vm/hermes/harness/agent-1/home')
+    ).toBe('/tmp/browseros-test/agents/hermes/harness/agent-1/home')
   })
 
   it('writes per-agent provider config from the Hermes provider map', async () => {
@@ -63,6 +65,36 @@ describe('Hermes adapter helpers', () => {
       )
       await expect(readFile(join(home, '.env'), 'utf8')).resolves.toBe(
         ['OPENAI_API_KEY=sk-test', ''].join('\n'),
+      )
+    } finally {
+      await rm(browserosDir, { recursive: true, force: true })
+    }
+  })
+
+  it('copies legacy per-agent provider files into the new host home', async () => {
+    const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-hermes-'))
+    try {
+      const legacyHome = getLegacyHermesAgentHomeHostDir({
+        browserosDir,
+        agentId: 'agent-1',
+      })
+      await mkdir(legacyHome, { recursive: true })
+      await writeFile(join(legacyHome, 'config.yaml'), 'legacy config\n')
+      await writeFile(join(legacyHome, '.env'), 'LEGACY_KEY=1\n')
+
+      const home = await ensureHermesAgentHomeHostDir({
+        browserosDir,
+        agentId: 'agent-1',
+      })
+
+      expect(home).toBe(
+        getHermesAgentHomeHostDir({ browserosDir, agentId: 'agent-1' }),
+      )
+      await expect(readFile(join(home, 'config.yaml'), 'utf8')).resolves.toBe(
+        'legacy config\n',
+      )
+      await expect(readFile(join(home, '.env'), 'utf8')).resolves.toBe(
+        'LEGACY_KEY=1\n',
       )
     } finally {
       await rm(browserosDir, { recursive: true, force: true })
