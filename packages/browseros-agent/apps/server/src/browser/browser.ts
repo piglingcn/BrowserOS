@@ -204,7 +204,7 @@ export class Browser {
     const nodes = await fetchLegacyAxTreeWithFrames(session)
     if (nodes.length === 0) return ''
 
-    const lines = snapshot.buildInteractiveTree(nodes)
+    const treeLines = snapshot.buildEnhancedTree(nodes)
 
     try {
       const cursorElements =
@@ -212,21 +212,31 @@ export class Browser {
 
       if (cursorElements.length > 0) {
         const includedIds = new Set<number>()
-        for (const line of lines) {
-          const match = line.match(/^\[(\d+)\]/)
+        for (const line of treeLines) {
+          const match = line.match(/\[(\d+)\]/)
           if (match) includedIds.add(Number(match[1]))
         }
 
+        const extras: string[] = []
         for (const el of cursorElements) {
           if (includedIds.has(el.backendNodeId)) continue
-          lines.push(`[${el.backendNodeId}] clickable "${el.text}"`)
+          extras.push(
+            `[${el.backendNodeId}] clickable "${el.text}" (${el.reasons.join(', ')})`,
+          )
+        }
+
+        if (extras.length > 0) {
+          treeLines.push('# Cursor-interactive (no ARIA role):')
+          treeLines.push(...extras)
         }
       }
-    } catch {
-      // cursor detection is best-effort; AX tree results are still returned
+    } catch (err) {
+      logger.debug('Cursor-interactive detection failed', {
+        error: String(err),
+      })
     }
 
-    return lines.join('\n')
+    return treeLines.join('\n')
   }
 
   async getPageLinks(
@@ -264,46 +274,6 @@ export class Browser {
     }
 
     return results
-  }
-
-  async enhancedSnapshot(page: number): Promise<string> {
-    const session = await this.resolveSession(page)
-    const nodes = await fetchLegacyAxTreeWithFrames(session)
-    if (nodes.length === 0) return ''
-
-    const treeLines = snapshot.buildEnhancedTree(nodes)
-
-    try {
-      const cursorElements =
-        await snapshot.findCursorInteractiveElements(session)
-
-      if (cursorElements.length > 0) {
-        const includedIds = new Set<number>()
-        for (const line of treeLines) {
-          const match = line.match(/\[(\d+)\]/)
-          if (match) includedIds.add(Number(match[1]))
-        }
-
-        const extras: string[] = []
-        for (const el of cursorElements) {
-          if (includedIds.has(el.backendNodeId)) continue
-          extras.push(
-            `[${el.backendNodeId}] clickable "${el.text}" (${el.reasons.join(', ')})`,
-          )
-        }
-
-        if (extras.length > 0) {
-          treeLines.push('# Cursor-interactive (no ARIA role):')
-          treeLines.push(...extras)
-        }
-      }
-    } catch (err) {
-      logger.debug('Cursor-interactive detection failed', {
-        error: String(err),
-      })
-    }
-
-    return treeLines.join('\n')
   }
 
   async content(page: number, selector?: string): Promise<string> {

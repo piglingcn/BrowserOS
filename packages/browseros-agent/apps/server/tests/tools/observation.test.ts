@@ -12,7 +12,6 @@ import {
   evaluate_script,
   get_page_content,
   get_page_links,
-  take_enhanced_snapshot,
   take_screenshot,
   take_snapshot,
 } from '../../src/tools/browser/snapshot'
@@ -76,15 +75,15 @@ describe('observation tools', () => {
     })
   }, 60_000)
 
-  it('take_enhanced_snapshot returns structural context', async () => {
+  it('take_snapshot returns structural context', async () => {
     await withBrowser(async ({ execute }) => {
       const newResult = await execute(new_page, { url: 'https://example.com' })
       const pageId = pageIdOf(newResult)
 
-      const snapResult = await execute(take_enhanced_snapshot, { page: pageId })
+      const snapResult = await execute(take_snapshot, { page: pageId })
       assert.ok(!snapResult.isError, textOf(snapResult))
       const text = textOf(snapResult)
-      assert.ok(text.length > 0, 'Enhanced snapshot should not be empty')
+      assert.ok(text.length > 0, 'Snapshot should not be empty')
 
       await execute(close_page, { page: pageId })
     })

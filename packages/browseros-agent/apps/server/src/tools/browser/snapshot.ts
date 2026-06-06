@@ -8,7 +8,7 @@ const pageParam = z.number().describe('Page ID (from list_pages)')
 export const take_snapshot = defineTool({
   name: 'take_snapshot',
   description:
-    'Get a concise snapshot of interactive elements on the page. Returns a flat list with element IDs (e.g. [47]) that can be used with click, fill, hover, etc. Always take a snapshot before interacting with page elements.',
+    'Capture the page as an indented accessibility tree. Actionable elements include element IDs (e.g. [47]) that can be used with click, fill, hover, etc. Iframe content is stitched inline when available. Always take a snapshot before interacting, and re-snapshot after navigation or large page changes.',
   input: z.object({
     page: pageParam,
   }),
@@ -17,23 +17,6 @@ export const take_snapshot = defineTool({
   }),
   handler: async (args, ctx, response) => {
     const tree = await ctx.browser.snapshot(args.page)
-    response.text(tree || 'Page has no interactive elements.')
-    response.data({ snapshot: tree || '' })
-  },
-})
-
-export const take_enhanced_snapshot = defineTool({
-  name: 'take_enhanced_snapshot',
-  description:
-    'Get a detailed accessibility tree of the page with structural context (headings, landmarks, dialogs) and cursor-interactive elements that ARIA misses. Use when you need more context than take_snapshot provides.',
-  input: z.object({
-    page: pageParam,
-  }),
-  output: z.object({
-    snapshot: z.string(),
-  }),
-  handler: async (args, ctx, response) => {
-    const tree = await ctx.browser.enhancedSnapshot(args.page)
     response.text(tree || 'Page has no visible content.')
     response.data({ snapshot: tree || '' })
   },

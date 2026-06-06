@@ -130,8 +130,7 @@ function getCapabilities(
 You control a Chromium browser. Key tool categories:
 
 **Observation** — understand what's on a page:
-- \`take_snapshot\` → interactive elements with IDs (use before clicking/filling)
-- \`take_enhanced_snapshot\` → full accessibility tree (use for complex/nested UIs)
+- \`take_snapshot\` → accessibility tree with element IDs (use before clicking/filling)
 - \`get_page_content\` → page as clean markdown (use to extract text/data)
 - \`get_page_links\` → all links (use when looking for specific URLs)
 - \`get_dom\` / \`search_dom\` → raw HTML (use for precise CSS/XPath queries)
@@ -301,8 +300,7 @@ function getToolSelection(
 ### Observation: which tool to use
 | Situation | Tool |
 |-----------|------|
-| Need to click/fill/interact | \`take_snapshot\` (returns element IDs) |
-| Complex nested UI, need structure | \`take_enhanced_snapshot\` |
+| Need to click/fill/interact, including complex nested UI | \`take_snapshot\` (returns element IDs) |
 | Need to read text content | \`get_page_content\` |
 | Looking for specific links | \`get_page_links\` |
 | Need exact HTML or CSS selectors | \`get_dom\` or \`search_dom\` |

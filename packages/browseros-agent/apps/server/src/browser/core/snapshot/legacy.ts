@@ -10,57 +10,6 @@ import {
 
 export type { AXNode } from './ax-types'
 
-export function buildInteractiveTree(nodes: AXNode[]): string[] {
-  const nodeMap = new Map<string, AXNode>()
-  for (const node of nodes) nodeMap.set(node.nodeId, node)
-
-  const lines: string[] = []
-
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: tree-walking with multiple node types is inherently complex
-  function walk(nodeId: string): void {
-    const node = nodeMap.get(nodeId)
-    if (!node) return
-
-    const role = node.ignored
-      ? undefined
-      : (node.role?.value as string | undefined)
-    if (!role || SKIP_ROLES.has(role)) {
-      if (node.childIds) for (const childId of node.childIds) walk(childId)
-      return
-    }
-
-    if (INTERACTIVE_ROLES.has(role) && node.backendDOMNodeId !== undefined) {
-      const name = typeof node.name?.value === 'string' ? node.name.value : ''
-      const value =
-        typeof node.value?.value === 'string' ? node.value.value : ''
-
-      let line = `[${node.backendDOMNodeId}] ${role}`
-      if (name) line += ` "${name}"`
-      if (
-        value &&
-        (role === 'textbox' || role === 'searchbox' || role === 'textarea')
-      )
-        line += ` value="${value}"`
-      const props = extractProps(node)
-      if (props) line += ` ${props}`
-      lines.push(line)
-    }
-
-    if (node.childIds) for (const childId of node.childIds) walk(childId)
-  }
-
-  const roots = nodes.filter((n) => ROOT_ROLES.has(roleOf(n)))
-  if (roots.length === 0 && nodes[0]?.childIds) {
-    for (const childId of nodes[0].childIds) walk(childId)
-  } else {
-    for (const root of roots) {
-      if (root.childIds) for (const childId of root.childIds) walk(childId)
-    }
-  }
-
-  return lines
-}
-
 export function buildEnhancedTree(nodes: AXNode[]): string[] {
   const nodeMap = new Map<string, AXNode>()
   for (const node of nodes) nodeMap.set(node.nodeId, node)

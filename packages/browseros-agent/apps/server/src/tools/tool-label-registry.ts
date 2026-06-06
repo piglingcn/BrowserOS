@@ -23,7 +23,6 @@ const VERB_OVERRIDES: Record<string, string> = {
 
   // Page reading
   take_snapshot: 'Captured page snapshot',
-  take_enhanced_snapshot: 'Captured detailed snapshot',
   get_page_content: 'Read page content',
   get_page_links: 'Extracted page links',
   get_dom: 'Read page DOM',
@@ -221,8 +220,8 @@ const SUBJECT_EXTRACTORS: Record<string, SubjectExtractor> = {
     return typeof page === 'number' ? `tab ${page}` : asString(page)
   },
 
-  // Page reads (take_snapshot, take_enhanced_snapshot, get_page_content,
-  // get_page_links, get_dom, take_screenshot) intentionally omit a
+  // Page reads (take_snapshot, get_page_content, get_page_links, get_dom,
+  // take_screenshot) intentionally omit a
   // subject — the only argument is a numeric page ID that's internal
   // to the agent and meaningless to the user ("tab 4" tells them nothing).
   // The verb alone communicates what happened.
@@ -278,12 +277,9 @@ function canonicalName(rawName: string): string {
 function humanizeToolName(rawName: string): string {
   const stripped = canonicalName(rawName)
   const words = stripped.split(/[_-]/).filter((w) => w.length > 0)
-  if (words.length === 0) return rawName
-  const first = words[0]!
-  return [
-    first.charAt(0).toUpperCase() + first.slice(1),
-    ...words.slice(1),
-  ].join(' ')
+  const [first, ...rest] = words
+  if (!first) return rawName
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ')
 }
 
 /**

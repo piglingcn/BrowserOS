@@ -416,13 +416,11 @@ describe('security boundaries', () => {
 
 describe('capability coverage', () => {
   it('documents all observation tools', () => {
-    // Why: observation tools are the most critical category — the agent
-    // must know WHICH observation tool to use for each situation.
-    // v5 only mentioned take_snapshot.
+    // Why: observation tools are the most critical category. Snapshot is the
+    // single page-state tree; content/link/DOM tools handle narrower reads.
     const prompt = buildRegular()
     const observationTools = [
       'take_snapshot',
-      'take_enhanced_snapshot',
       'get_page_content',
       'get_page_links',
       'get_dom',

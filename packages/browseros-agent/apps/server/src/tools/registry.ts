@@ -52,7 +52,6 @@ import {
   evaluate_script,
   get_page_content,
   get_page_links,
-  take_enhanced_snapshot,
   take_screenshot,
   take_snapshot,
 } from './browser/snapshot'
@@ -86,9 +85,8 @@ export const registry = createRegistry([
   move_page,
   close_page,
 
-  // Observation (9)
+  // Observation (8)
   take_snapshot,
-  take_enhanced_snapshot,
   get_page_content,
   get_page_links,
   get_dom,
