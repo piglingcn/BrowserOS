@@ -5,12 +5,23 @@
  */
 
 import { type AgentProbeResult, probeAgent as runProbe } from 'acp-probe'
+import { resolveAcpSpawnCommand } from '../../../lib/agents/host-acp/launcher'
+import { logger } from '../../../lib/logger'
 
 export interface ServerAcpxProbeInput {
   agentId?: string
   command?: string
   cwd?: string
   timeoutMs?: number
+  /**
+   * BrowserOS resources directory. When set, the probe prefers the
+   * bundled Bun launcher at <resourcesDir>/bin/third_party/bun for
+   * built-in agents so end-user installs without Node still resolve
+   * the spawn correctly. Production callers thread this from the
+   * HttpServerConfig.
+   */
+  resourcesDir?: string | null
+  platform?: NodeJS.Platform
 }
 
 export interface ServerAcpxProbeModel {
@@ -39,11 +50,21 @@ export interface ServerAcpxProbeResult {
   error?: ServerAcpxProbeError
 }
 
-const DEFAULT_PROBE_TIMEOUT_MS = 10_000
+// 120s gives the cold-cache tarball fetch + extract enough headroom on
+// slow networks (corp VPN, antivirus scanning extracted files) without
+// stranding the user behind a smaller deadline. Warm-cache spawns still
+// return in well under a second so the ceiling is invisible in steady
+// state. Env override is clamped to [1s, 120s] for the same reason.
+const DEFAULT_PROBE_TIMEOUT_MS = 120_000
+const MAX_PROBE_TIMEOUT_MS = 120_000
 
 function resolveTimeout(requested?: number): number {
   const envValue = Number(process.env.BROWSEROS_ACPX_PROBE_TIMEOUT_MS)
-  if (Number.isFinite(envValue) && envValue >= 1_000 && envValue <= 60_000) {
+  if (
+    Number.isFinite(envValue) &&
+    envValue >= 1_000 &&
+    envValue <= MAX_PROBE_TIMEOUT_MS
+  ) {
     return envValue
   }
   return requested ?? DEFAULT_PROBE_TIMEOUT_MS
@@ -56,9 +77,33 @@ export async function probeAcpAgent(
     throw new Error('Either agentId or command is required')
   }
   const timeoutMs = resolveTimeout(input.timeoutMs)
+
+  // Built-in agent ids (claude, codex) get rewritten to an explicit
+  // command when the bundled-Bun launcher resolves. When the launcher
+  // would fall back to `npx -y …` we deliberately leave the agentId
+  // alone so acpx's built-in registry produces the same command via
+  // its own code path; this keeps callers that have not threaded
+  // resourcesDir yet on the exact pre-existing behaviour.
+  let agentId = input.agentId
+  let command = input.command
+  if (!command && agentId) {
+    const launcher = resolveAcpSpawnCommand({
+      agentType: agentId,
+      resourcesDir: input.resourcesDir,
+      platform: input.platform,
+    })
+    if (launcher?.source === 'bundled-bun') {
+      command = launcher.command
+      agentId = undefined
+      logger.debug('ACP probe using bundled-bun launcher', {
+        originalAgentId: input.agentId,
+      })
+    }
+  }
+
   const result = await runProbe({
-    agent: input.agentId,
-    command: input.command,
+    agent: agentId,
+    command,
     cwd: input.cwd,
     authPolicy: 'skip',
     timeoutMs,
