@@ -22,7 +22,10 @@ import { createCodexFetch } from '../lib/clients/oauth/codex-fetch'
 import { createCopilotFetch } from '../lib/clients/oauth/copilot-fetch'
 import { logger } from '../lib/logger'
 import { createOpenRouterCompatibleFetch } from '../lib/openrouter-fetch'
+import { ensureWorkspaceInstructionFile } from './acp-instructions'
 import { ACP_PROVIDER_TYPES, isAcpProvider } from './acp-providers'
+import type { BuildSystemPromptOptions } from './prompt'
+import { readSoulPrompt } from './soul-prompt'
 import type { ResolvedAgentConfig } from './types'
 
 export { isAcpProvider }
@@ -32,8 +35,25 @@ const BUILT_IN_ACP_AGENT_BY_PROVIDER: Record<string, string> = {
   [LLM_PROVIDERS.CODEX]: 'codex',
 }
 
-function defaultAcpWorkspacePath(providerId: string): string {
-  return join(getBrowserosDir(), 'workspaces', providerId)
+/**
+ * Per-provider workspace path so two providers of the same TYPE (e.g.
+ * Claude Opus High and Claude Sonnet Medium) get isolated working
+ * directories instead of stomping on each other's files. The provider
+ * type still anchors the top-level folder so the user can browse
+ * `workspaces/claude-code/` to see all their Claude Code provider
+ * records at a glance.
+ *
+ * `providerId` is optional for backwards compatibility with chat
+ * requests from older clients that did not forward the saved
+ * `LlmProviderConfig.id` to the server; those still land on the legacy
+ * shared path. New requests always carry it.
+ */
+function defaultAcpWorkspacePath(
+  providerType: string,
+  providerId: string | undefined,
+): string {
+  const base = join(getBrowserosDir(), 'workspaces', providerType)
+  return providerId ? join(base, providerId) : base
 }
 
 /**
@@ -67,7 +87,8 @@ async function createAcpLanguageModel(
 ): Promise<LanguageModelWithCleanup> {
   const agentId = resolveAcpAgentId(config)
   const workspacePath = expandHomeToken(
-    config.acpFixedWorkspacePath ?? defaultAcpWorkspacePath(config.provider),
+    config.acpFixedWorkspacePath ??
+      defaultAcpWorkspacePath(config.provider, config.providerId),
   )
   await mkdir(workspacePath, { recursive: true }).catch((err: unknown) => {
     logger.warn('Failed to ensure ACP workspace exists; spawn may fail', {
@@ -75,6 +96,38 @@ async function createAcpLanguageModel(
       error: err instanceof Error ? err.message : String(err),
     })
   })
+
+  // Plant or refresh the ACP workspace instruction file (CLAUDE.md /
+  // AGENTS.md) on conversation start. Subsequent turns short-circuit
+  // inside the helper. Failures are logged but never thrown so a bad
+  // write does not break the chat.
+  const promptOptions: BuildSystemPromptOptions = {
+    workspaceDir: workspacePath,
+    userSystemPrompt: config.userSystemPrompt,
+    chatMode: config.chatMode,
+    isScheduledTask: config.isScheduledTask,
+    soulContent: await readSoulPrompt(),
+    declinedApps: config.declinedApps,
+    origin: config.origin,
+    acpMode: true,
+  }
+  const ensureResult = await ensureWorkspaceInstructionFile({
+    workspacePath,
+    providerType: config.provider,
+    promptOptions,
+    isNewConversation: config.isNewConversation ?? false,
+  })
+  logger.info('ACP workspace instruction file lifecycle', {
+    conversationId: config.conversationId,
+    providerType: config.provider,
+    workspacePath,
+    action: ensureResult.action,
+    ...('filename' in ensureResult ? { filename: ensureResult.filename } : {}),
+    ...(ensureResult.action === 'failed'
+      ? { error: ensureResult.error.message }
+      : {}),
+  })
+
   const agentRegistryOverrides: Record<string, string> = {}
   if (config.provider === LLM_PROVIDERS.ACP_CUSTOM && config.acpCommand) {
     agentRegistryOverrides[agentId] = config.acpCommand

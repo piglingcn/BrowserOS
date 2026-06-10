@@ -22,6 +22,13 @@ export interface ProviderConfig {
 export interface ResolvedAgentConfig {
   conversationId: string
   provider: LLMProvider
+  /**
+   * Unique `LlmProviderConfig.id` this request references. Forwarded
+   * from the chat request so the ACP factory can scope the default
+   * workspace path per provider record instead of per provider TYPE
+   * (otherwise every Claude Code provider would share one cwd).
+   */
+  providerId?: string
   model: string
   apiKey?: string
   baseUrl?: string
@@ -66,4 +73,9 @@ export interface ResolvedAgentConfig {
    *  servers in browserContext. Only consumed by the ACP factory
    *  branch; model-backed factories ignore it. */
   acpMcpServers?: McpServerSpec[]
+
+  /** True iff this is the first turn of the conversation (no session
+   *  cached in the SessionStore). Drives the ACP workspace
+   *  instruction file refresh so subsequent turns do zero fs work. */
+  isNewConversation?: boolean
 }
