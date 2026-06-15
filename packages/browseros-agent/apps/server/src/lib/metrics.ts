@@ -63,6 +63,10 @@ interface RollupBucket {
   tool_executions: ToolExecCounters
 }
 
+interface MetricsLogOptions {
+  sampling?: number
+}
+
 class RollupBuffer {
   private current: RollupBucket | null = null
 
@@ -139,6 +143,11 @@ function defaultAlignedNow(): number {
   return Math.floor(Date.now() / ROLLUP_INTERVAL_MS) * ROLLUP_INTERVAL_MS
 }
 
+function normalizeSampling(sampling: number | undefined): number {
+  if (sampling === undefined || !Number.isFinite(sampling)) return 1
+  return Math.min(Math.max(sampling, 0), 1)
+}
+
 class MetricsService {
   private client: PostHog | null = null
   private config: MetricsConfig | null = null
@@ -165,7 +174,12 @@ class MetricsService {
     return this.config?.client_id ?? null
   }
 
-  log(eventName: string, properties: Record<string, unknown> = {}): void {
+  /** Records one metrics event, aggregating known noisy events before immediate capture. */
+  log(
+    eventName: string,
+    properties: Record<string, unknown> = {},
+    options: MetricsLogOptions = {},
+  ): void {
     if (!this.client || !this.config) {
       return
     }
@@ -185,7 +199,14 @@ class MetricsService {
       return
     }
 
-    this.captureNow(eventName, properties)
+    const sampleRate = normalizeSampling(options.sampling)
+    if (sampleRate <= 0) return
+    if (sampleRate < 1 && Math.random() >= sampleRate) return
+
+    this.captureNow(
+      eventName,
+      sampleRate < 1 ? { ...properties, sample_rate: sampleRate } : properties,
+    )
   }
 
   async shutdown(): Promise<void> {
