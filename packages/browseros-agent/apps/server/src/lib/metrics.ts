@@ -9,6 +9,7 @@ import { INLINED_ENV } from '../env'
 
 const POSTHOG_API_KEY = INLINED_ENV.POSTHOG_API_KEY
 const EVENT_PREFIX = 'browseros.server.'
+const DEFAULT_METRICS_SAMPLE_RATE = 1 / 5
 
 /**
  * The two events that previously fired per call and dwarfed every other
@@ -61,10 +62,6 @@ interface RollupBucket {
   period_start_ts: string
   mcp_requests: number
   tool_executions: ToolExecCounters
-}
-
-interface MetricsLogOptions {
-  sampling?: number
 }
 
 class RollupBuffer {
@@ -143,8 +140,8 @@ function defaultAlignedNow(): number {
   return Math.floor(Date.now() / ROLLUP_INTERVAL_MS) * ROLLUP_INTERVAL_MS
 }
 
-function normalizeSampling(sampling: number | undefined): number {
-  if (sampling === undefined || !Number.isFinite(sampling)) return 1
+function normalizeSampling(sampling: number): number {
+  if (!Number.isFinite(sampling)) return DEFAULT_METRICS_SAMPLE_RATE
   return Math.min(Math.max(sampling, 0), 1)
 }
 
@@ -174,18 +171,18 @@ class MetricsService {
     return this.config?.client_id ?? null
   }
 
-  /** Records one metrics event, aggregating known noisy events before immediate capture. */
+  /** Records one metrics event, aggregating noisy events and sampling immediate captures. */
   log(
     eventName: string,
     properties: Record<string, unknown> = {},
-    options: MetricsLogOptions = {},
+    sampling = DEFAULT_METRICS_SAMPLE_RATE,
   ): void {
     if (!this.client || !this.config) {
       return
     }
 
-    // The two highest-volume events get aggregated. Every other event
-    // captures per call as it always has.
+    // The two highest-volume events get aggregated before sampling;
+    // every other event goes through the immediate-capture sample gate.
     if (eventName === AGGREGATED_EVENT_MCP_REQUEST) {
       this.rollup.recordMcpRequest()
       return
@@ -199,7 +196,7 @@ class MetricsService {
       return
     }
 
-    const sampleRate = normalizeSampling(options.sampling)
+    const sampleRate = normalizeSampling(sampling)
     if (sampleRate <= 0) return
     if (sampleRate < 1 && Math.random() >= sampleRate) return
 

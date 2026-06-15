@@ -13,8 +13,6 @@ import type { RemoteHermesService } from '../services/remote-hermes/remote-herme
 import { ChatRequestSchema } from '../types'
 import { ConversationIdParamSchema } from '../utils/validation'
 
-const CHAT_REQUEST_METRIC_SAMPLE_RATE = 1 / 5
-
 interface ChatRouteDeps {
   browser: Browser
   browserSession: BrowserSession
@@ -73,16 +71,10 @@ export function createChatRoutes(deps: ChatRouteDeps) {
           : undefined,
       })
 
-      metrics.log(
-        'chat.request',
-        {
-          provider: request.provider,
-          model: request.model,
-        },
-        {
-          sampling: CHAT_REQUEST_METRIC_SAMPLE_RATE,
-        },
-      )
+      metrics.log('chat.request', {
+        provider: request.provider,
+        model: request.model,
+      })
 
       logger.info('Chat request received', {
         conversationId: request.conversationId,

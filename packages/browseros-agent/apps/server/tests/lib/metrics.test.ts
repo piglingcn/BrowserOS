@@ -161,18 +161,37 @@ describe('MetricsService — log dispatch', () => {
     expect(captureCalls).toHaveLength(0)
   })
 
-  it('captures non-aggregated events immediately', () => {
+  it('captures default-sampled non-aggregated events when selected', () => {
     metrics.initialize({ client_id: 'client-a' })
-    metrics.log('chat.request', { mode: 'agent' })
+    withRandom(0.19, () => {
+      metrics.log('chat.request', { mode: 'agent' })
+    })
     expect(captureCalls).toHaveLength(1)
     expect(captureCalls[0]?.event).toBe('browseros.server.chat.request')
     expect(captureCalls[0]?.distinctId).toBe('client-a')
+    expect(captureCalls[0]?.properties.sample_rate).toBe(1 / 5)
+  })
+
+  it('skips default-sampled non-aggregated events when not selected', () => {
+    metrics.initialize({ client_id: 'client-a' })
+    withRandom(0.2, () => {
+      metrics.log('chat.request', { mode: 'agent' })
+    })
+    expect(captureCalls).toHaveLength(0)
+  })
+
+  it('captures unsampled non-aggregated events when sampling is one', () => {
+    metrics.initialize({ client_id: 'client-a' })
+    metrics.log('chat.request', { mode: 'agent' }, 1)
+    expect(captureCalls).toHaveLength(1)
+    expect(captureCalls[0]?.properties.mode).toBe('agent')
+    expect(captureCalls[0]?.properties.sample_rate).toBeUndefined()
   })
 
   it('captures sampled non-aggregated events when selected', () => {
     metrics.initialize({ client_id: 'client-a' })
     withRandom(0.49, () => {
-      metrics.log('chat.request', { mode: 'agent' }, { sampling: 0.5 })
+      metrics.log('chat.request', { mode: 'agent' }, 0.5)
     })
     expect(captureCalls).toHaveLength(1)
     expect(captureCalls[0]?.properties.mode).toBe('agent')
@@ -182,15 +201,22 @@ describe('MetricsService — log dispatch', () => {
   it('skips sampled non-aggregated events when not selected', () => {
     metrics.initialize({ client_id: 'client-a' })
     withRandom(0.5, () => {
-      metrics.log('chat.request', { mode: 'agent' }, { sampling: 0.5 })
+      metrics.log('chat.request', { mode: 'agent' }, 0.5)
+    })
+    expect(captureCalls).toHaveLength(0)
+  })
+
+  it('skips immediate capture when sampling is zero', () => {
+    metrics.initialize({ client_id: 'client-a' })
+    withRandom(0, () => {
+      metrics.log('chat.request', { mode: 'agent' }, 0)
     })
     expect(captureCalls).toHaveLength(0)
   })
 
   it('skips emit entirely when no identity is configured', () => {
-    // No client_id, no install_id → captureNow should short-circuit.
     metrics.initialize({})
-    metrics.log('chat.request', { mode: 'agent' })
+    metrics.log('chat.request', { mode: 'agent' }, 1)
     expect(captureCalls).toHaveLength(0)
   })
 
@@ -207,7 +233,7 @@ describe('MetricsService — log dispatch', () => {
   it('does not sample rollup inputs', async () => {
     metrics.initialize({ client_id: 'client-a' })
     withRandom(0.99, () => {
-      metrics.log('mcp.request', {}, { sampling: 0 })
+      metrics.log('mcp.request', {}, 0)
     })
 
     await metrics.shutdown()
