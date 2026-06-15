@@ -117,34 +117,13 @@ export const SCHEDULED_TASK_VIEW_MORE_IN_NEWTAB_EVENT =
   'newtab.scheduled_task.view_more'
 
 /** @public */
-export const NEWTAB_OPENED_EVENT = 'newtab.opened'
-
-/** @public */
 export const NEWTAB_AI_TRIGGERED_EVENT = 'newtab.ai.triggered'
-
-/** @public */
-export const NEWTAB_SEARCH_EXECUTED_EVENT = 'newtab.search.executed'
-
-/** @public */
-export const NEWTAB_WORKSPACE_OPENED_EVENT = 'newtab.workspace.opened'
-
-/** @public */
-export const NEWTAB_TABS_OPENED_EVENT = 'newtab.tabs.opened'
 
 /** @public */
 export const NEWTAB_TAB_TOGGLED_EVENT = 'newtab.tab.toggled'
 
 /** @public */
 export const NEWTAB_TAB_REMOVED_EVENT = 'newtab.tab.removed'
-
-/** @public */
-export const NEWTAB_APPS_OPENED_EVENT = 'newtab.apps.opened'
-
-/** @public */
-export const NEWTAB_TIP_DISMISSED_EVENT = 'newtab.tip.dismissed'
-
-/** @public */
-export const NEWTAB_CHAT_STARTED_EVENT = 'newtab.chat.started'
 
 /** @public */
 export const NEWTAB_CHAT_STOPPED_EVENT = 'newtab.chat.stopped'

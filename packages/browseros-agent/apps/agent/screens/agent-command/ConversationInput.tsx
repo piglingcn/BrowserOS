@@ -42,6 +42,7 @@ import { useWorkspace } from '@/modules/workspace/workspace.hooks'
 export interface ConversationInputSendInput {
   text: string
   attachments: StagedAttachment[]
+  selectedTabs: chrome.tabs.Tab[]
 }
 
 export interface ConversationInputProps {
@@ -460,9 +461,10 @@ export const ConversationInput: FC<ConversationInputProps> = ({
     if (disabled || isStaging) return
     if (streaming && !queueAware) return
     if (!text && attachments.length === 0) return
-    onSend({ text, attachments })
+    onSend({ text, attachments, selectedTabs })
     setInput('')
     setAttachments([])
+    setSelectedTabs([])
     setAttachmentError(null)
   }
 

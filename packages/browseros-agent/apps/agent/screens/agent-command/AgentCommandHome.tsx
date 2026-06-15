@@ -2,6 +2,8 @@ import { type FC, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { Provider } from '@/components/chat/chatComponentTypes'
 import { Feature } from '@/lib/browseros/capabilities'
+import { createBrowserOSAction } from '@/lib/chat-actions/types'
+import { openSidePanelWithSearch } from '@/lib/messaging/sidepanel/openSidepanelWithSearch'
 import {
   useAgentAdapters,
   useHarnessAgents,
@@ -21,7 +23,10 @@ import {
   ConversationInput,
   type ConversationInputSendInput,
 } from './ConversationInput'
-import { routeHomeSend } from './home-compose.helpers'
+import {
+  resolveHomeLlmRoutingMode,
+  routeHomeSend,
+} from './home-compose.helpers'
 import { setPendingInitialMessage } from './pending-initial-message'
 
 export const AgentCommandHome: FC = () => {
@@ -34,11 +39,20 @@ export const AgentCommandHome: FC = () => {
   } = useLlmProviders()
   const { harnessAgents } = useHarnessAgents()
   const { adapters } = useAgentAdapters()
-  const { supports } = useCapabilities()
+  const { supports, isLoading: capabilitiesLoading } = useCapabilities()
   const hermesAgentSupported = supports(Feature.HERMES_AGENT_SUPPORT)
+  const supportsInlineChat =
+    supports(Feature.ALPHA_FEATURES_SUPPORT) &&
+    supports(Feature.NEWTAB_CHAT_SUPPORT)
+  const llmRoutingMode = resolveHomeLlmRoutingMode({
+    capabilitiesLoading,
+    supportsInlineChat,
+  })
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(
     null,
   )
+  const waitingForLlmCapabilities =
+    selectedProvider?.kind === 'llm' && llmRoutingMode === 'wait'
 
   const targets = useMemo(
     () =>
@@ -74,10 +88,12 @@ export const AgentCommandHome: FC = () => {
 
   const handleSend = async (input: ConversationInputSendInput) => {
     if (!selectedProvider) return
+    if (selectedProvider.kind === 'llm' && llmRoutingMode === 'wait') return
     const agentSessionId =
       selectedProvider.kind === 'acp' ? crypto.randomUUID() : undefined
     const route = routeHomeSend(selectedProvider, input.text, {
       agentSessionId,
+      selectedTabs: input.selectedTabs,
     })
     if (!route) return
     if (route.kind === 'acp') {
@@ -96,15 +112,24 @@ export const AgentCommandHome: FC = () => {
       navigate(route.path)
       return
     }
-    // LLM target → /home/chat. That chat resolves its provider from the shared
-    // chat-target selection (preferred over the global default), so persist
-    // this pick there before navigating; also set it as the default to mirror
-    // the sidepanel's behaviour.
     const target = targets.find(
       (entry) => entry.kind === 'llm' && entry.id === route.providerId,
     )
     await persistSidepanelChatTargetSelection(target)
     await setDefaultProvider(route.providerId)
+    if (llmRoutingMode === 'sidepanel') {
+      const action = createBrowserOSAction({
+        mode: 'chat',
+        message: input.text,
+        tabs: input.selectedTabs,
+      })
+      await openSidePanelWithSearch('open', {
+        query: input.text,
+        mode: 'chat',
+        action,
+      })
+      return
+    }
     navigate(route.path)
   }
 
@@ -134,7 +159,7 @@ export const AgentCommandHome: FC = () => {
               onSelectProvider={setSelectedProvider}
               onSend={handleSend}
               streaming={false}
-              disabled={!selectedProvider}
+              disabled={!selectedProvider || waitingForLlmCapabilities}
               attachmentsEnabled={true}
               placeholder={
                 selectedProvider
