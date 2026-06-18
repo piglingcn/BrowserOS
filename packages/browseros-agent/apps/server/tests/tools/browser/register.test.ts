@@ -103,8 +103,160 @@ describe('registerBrowserTools', () => {
     registerBrowserTools(fake.server as never, session)
 
     expect([...fake.handlers.keys()]).toEqual(BROWSER_TOOLS.map((t) => t.name))
-    expect(fake.handlers.size).toBe(11)
+    expect(fake.handlers.size).toBe(12)
     expect(fake.configs.get('tabs')?.inputSchema).toBeDefined()
+  })
+
+  it('manages windows through the compact windows tool', async () => {
+    const fake = createFakeServer()
+    const calls: Array<{ method: string; args?: unknown }> = []
+    const window = {
+      windowId: 7,
+      windowType: 'normal' as const,
+      bounds: {},
+      isActive: true,
+      isVisible: true,
+      tabCount: 2,
+    }
+    const hiddenWindow = {
+      ...window,
+      windowId: 8,
+      isActive: false,
+      isVisible: false,
+    }
+    const session = {
+      windows: {
+        list: async () => {
+          calls.push({ method: 'list' })
+          return [window]
+        },
+        create: async (args?: { hidden?: boolean }) => {
+          calls.push({ method: 'create', args })
+          return args?.hidden ? hiddenWindow : window
+        },
+        close: async (windowId: number) => {
+          calls.push({ method: 'close', args: windowId })
+        },
+        activate: async (windowId: number) => {
+          calls.push({ method: 'activate', args: windowId })
+        },
+        setVisibility: async (
+          windowId: number,
+          args: { visible: boolean; activate?: boolean },
+        ) => {
+          calls.push({ method: 'setVisibility', args: { windowId, ...args } })
+          return {
+            previousWindowId: windowId,
+            newWindowId: 9,
+            replaced: true,
+            window: { ...window, windowId: 9, isVisible: args.visible },
+          }
+        },
+      },
+      pages: {
+        list: async () => [],
+      },
+    } as unknown as BrowserSession
+
+    registerBrowserTools(fake.server as never, session)
+    const handler = fake.handlers.get('windows')
+
+    const list = await handler?.({ action: 'list' })
+    expect(list?.isError).toBeFalsy()
+    expect(list?.structuredContent).toEqual({
+      action: 'list',
+      windows: [window],
+      count: 1,
+    })
+    expect(list?.content).toEqual([
+      expect.objectContaining({
+        type: 'text',
+        text: expect.stringContaining('Window 7 (normal, 2 tabs) [ACTIVE]'),
+      }),
+    ])
+
+    const create = await handler?.({ action: 'create', hidden: true })
+    expect(create?.structuredContent).toEqual({
+      action: 'create',
+      window: hiddenWindow,
+    })
+
+    const close = await handler?.({ action: 'close', windowId: 7 })
+    expect(close?.structuredContent).toEqual({ action: 'close', windowId: 7 })
+
+    const activate = await handler?.({ action: 'activate', windowId: 8 })
+    expect(activate?.structuredContent).toEqual({
+      action: 'activate',
+      windowId: 8,
+    })
+
+    const visibility = await handler?.({
+      action: 'set_visibility',
+      windowId: 8,
+      visible: true,
+      activate: false,
+    })
+    expect(visibility?.structuredContent).toEqual({
+      action: 'set_visibility',
+      previousWindowId: 8,
+      newWindowId: 9,
+      replaced: true,
+      window: { ...window, windowId: 9, isVisible: true },
+    })
+
+    expect(calls).toEqual([
+      { method: 'list' },
+      { method: 'create', args: { hidden: true } },
+      { method: 'close', args: 7 },
+      { method: 'activate', args: 8 },
+      {
+        method: 'setVisibility',
+        args: { windowId: 8, visible: true, activate: false },
+      },
+    ])
+  })
+
+  it('returns clear errors for invalid windows actions', async () => {
+    const fake = createFakeServer()
+    const session = {
+      windows: {},
+      pages: {
+        list: async () => [],
+      },
+    } as unknown as BrowserSession
+
+    registerBrowserTools(fake.server as never, session)
+    const handler = fake.handlers.get('windows')
+
+    const close = await handler?.({ action: 'close' })
+    expect(close?.isError).toBe(true)
+    expect(close?.content).toEqual([
+      expect.objectContaining({
+        text: 'windows close: windowId is required.',
+      }),
+    ])
+
+    const visibilityWindow = await handler?.({
+      action: 'set_visibility',
+      visible: true,
+    })
+    expect(visibilityWindow?.isError).toBe(true)
+    expect(visibilityWindow?.content).toEqual([
+      expect.objectContaining({
+        text: 'windows set_visibility: windowId is required.',
+      }),
+    ])
+
+    const visibilityState = await handler?.({
+      action: 'set_visibility',
+      windowId: 7,
+    })
+    expect(visibilityState?.isError).toBe(true)
+    expect(visibilityState?.content).toEqual([
+      expect.objectContaining({
+        text: 'windows set_visibility: visible is required.',
+      }),
+    ])
   })
 
   it('applies scoped defaults when opening a new tab', async () => {

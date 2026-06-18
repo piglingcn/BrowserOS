@@ -4,12 +4,14 @@ import { Navigation } from './navigation'
 import { FrameRegistry } from './observer/frames'
 import { Observer } from './observer/observer'
 import { PageManager, type PageManagerHooks } from './pages'
+import { WindowManager } from './windows'
 
 export interface BrowserSessionHooks extends PageManagerHooks {}
 
 /** Coordinates page registry, observation, input, navigation, and raw CDP access. */
 export class BrowserSession {
   readonly pages: PageManager
+  readonly windows: WindowManager
   private readonly frames: FrameRegistry
   private readonly observers = new Map<number, Observer>()
 
@@ -18,6 +20,7 @@ export class BrowserSession {
     hooks: BrowserSessionHooks = {},
   ) {
     this.frames = new FrameRegistry(connection)
+    this.windows = new WindowManager(connection)
     this.pages = new PageManager(connection, {
       ...hooks,
       onSessionAttached: async (session, pageId, sessionId) => {

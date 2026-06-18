@@ -21,6 +21,7 @@ const compactBrowserToolFiles = [
   'tabs.ts',
   'trust-boundary.ts',
   'wait.ts',
+  'windows.ts',
 ]
 
 const legacyBrowserToolFiles = [
@@ -45,6 +46,11 @@ const legacyOnlyToolNames = [
   'take_snapshot',
   'group_tabs',
   'list_windows',
+  'create_window',
+  'create_hidden_window',
+  'close_window',
+  'activate_window',
+  'set_window_visibility',
 ]
 
 describe('browser tool boundary', () => {
@@ -67,7 +73,7 @@ describe('browser tool boundary', () => {
         existsSync(join(toolsDir, 'legacy/browser', file)),
         `Expected legacy/browser/${file}`,
       )
-      if (file !== 'snapshot.ts') {
+      if (file !== 'snapshot.ts' && file !== 'windows.ts') {
         assert.ok(
           !existsSync(join(toolsDir, 'browser', file)),
           `Unexpected active legacy browser module ${file}`,

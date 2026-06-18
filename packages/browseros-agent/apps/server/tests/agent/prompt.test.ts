@@ -417,6 +417,7 @@ describe('capability coverage', () => {
     const prompt = buildRegular()
     const browserTools = [
       'tabs',
+      'windows',
       'navigate',
       'snapshot',
       'diff',

@@ -11,6 +11,7 @@ import { fetchLegacyAxTreeWithFrames } from './core/observer/ax-tree'
 import type { PageInfo } from './core/pages'
 import { BrowserSession } from './core/session'
 import * as snapshot from './core/snapshot/legacy'
+import type { SetWindowVisibilityResult, WindowInfo } from './core/windows'
 import { type DomSearchResult, parseNodeAttributes } from './dom'
 import type { HistoryEntry } from './history'
 import * as history from './history'
@@ -18,34 +19,7 @@ import type { TabGroup } from './tab-groups'
 import * as tabGroups from './tab-groups'
 
 export type { PageInfo } from './core/pages'
-
-export interface WindowInfo {
-  windowId: number
-  windowType:
-    | 'normal'
-    | 'popup'
-    | 'app'
-    | 'devtools'
-    | 'app_popup'
-    | 'picture_in_picture'
-  bounds: {
-    left?: number
-    top?: number
-    width?: number
-    height?: number
-    windowState?: 'normal' | 'minimized' | 'maximized' | 'fullscreen'
-  }
-  isActive: boolean
-  isVisible: boolean
-  tabCount: number
-  activeTabId?: number
-}
-
-export interface SetWindowVisibilityResult {
-  window: WindowInfo
-  replaced: boolean
-  previousWindowId: number
-}
+export type { SetWindowVisibilityResult, WindowInfo } from './core/windows'
 
 export class Browser {
   private cdp: CdpBackend
@@ -655,26 +629,20 @@ export class Browser {
     )
   }
 
-  // --- Windows ---
-
   async listWindows(): Promise<WindowInfo[]> {
-    const result = await this.cdp.Browser.getWindows()
-    return result.windows as WindowInfo[]
+    return this.core.windows.list()
   }
 
   async createWindow(opts?: { hidden?: boolean }): Promise<WindowInfo> {
-    const result = await this.cdp.Browser.createWindow({
-      hidden: opts?.hidden ?? false,
-    })
-    return result.window as WindowInfo
+    return this.core.windows.create(opts)
   }
 
   async closeWindow(windowId: number): Promise<void> {
-    await this.cdp.Browser.closeWindow({ windowId })
+    await this.core.windows.close(windowId)
   }
 
   async activateWindow(windowId: number): Promise<void> {
-    await this.cdp.Browser.activateWindow({ windowId })
+    await this.core.windows.activate(windowId)
   }
 
   /**
@@ -685,16 +653,7 @@ export class Browser {
     windowId: number,
     opts: { visible: boolean; activate?: boolean },
   ): Promise<SetWindowVisibilityResult> {
-    const result = await this.cdp.Browser.setWindowVisibility({
-      windowId,
-      visible: opts.visible,
-      ...(opts.activate !== undefined && { activate: opts.activate }),
-    })
-    return {
-      window: result.window as WindowInfo,
-      replaced: result.replaced,
-      previousWindowId: result.previousWindowId,
-    }
+    return this.core.windows.setVisibility(windowId, opts)
   }
 
   async showPage(
