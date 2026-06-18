@@ -7,11 +7,13 @@ import { BROWSER_TOOLS } from '../../src/tools/browser/registry'
 const compactBrowserToolFiles = [
   'act.ts',
   'diff.ts',
+  'download.ts',
   'eval.ts',
   'framework.ts',
   'grep.ts',
   'navigate.ts',
   'output-file.ts',
+  'pdf.ts',
   'read.ts',
   'register.ts',
   'registry.ts',

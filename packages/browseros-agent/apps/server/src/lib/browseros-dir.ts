@@ -72,6 +72,18 @@ export async function writeToolOutputFile(
   await chmod(filePath, TOOL_OUTPUT_FILE_MODE)
 }
 
+/** Writes binary tool output (PDFs, downloads) with the same owner-only permissions. */
+export async function writeToolOutputBinaryFile(
+  filePath: string,
+  content: Uint8Array,
+): Promise<void> {
+  await writeFile(filePath, content, {
+    flag: 'wx',
+    mode: TOOL_OUTPUT_FILE_MODE,
+  })
+  await chmod(filePath, TOOL_OUTPUT_FILE_MODE)
+}
+
 /** Returns the durable SQLite database path for local BrowserOS server state. */
 export function getDbPath(): string {
   return join(getBrowserosDir(), PATHS.DB_DIR_NAME, PATHS.DB_FILE_NAME)
