@@ -179,7 +179,7 @@ describe('browser tool framework post-actions', () => {
   it('writes large diff post-actions to a BrowserOS output file', async () => {
     await withBrowserosDir(async () => {
       const largeDiff = Array.from(
-        { length: 2001 },
+        { length: 10001 },
         (_, i) => `word-${i}`,
       ).join(' ')
       const postActionTool = defineTool({
@@ -195,7 +195,7 @@ describe('browser tool framework post-actions', () => {
           diff: async () => ({
             changed: true,
             text: largeDiff,
-            added: 2001,
+            added: 10001,
             removed: 0,
             afterUrl: 'https://example.com/large',
           }),
@@ -212,18 +212,18 @@ describe('browser tool framework post-actions', () => {
 
       expect(result.isError).toBeFalsy()
       expect(text).toContain('[Page 4 diff]')
-      expect(text).toContain('Diff is 2001 words')
+      expect(text).toContain('Diff is 10001 words')
       expect(savedPath).toBeTruthy()
-      expect(text).not.toContain('word-2000')
+      expect(text).not.toContain('word-10000')
       expect(text).not.toContain('[UNTRUSTED_PAGE_CONTENT')
-      expect(readFileSync(savedPath ?? '', 'utf8')).toContain('word-2000')
+      expect(readFileSync(savedPath ?? '', 'utf8')).toContain('word-10000')
     })
   })
 
   it('keeps large diff post-actions visible when output file writes fail', async () => {
     await withBrowserosFile(async () => {
       const largeDiff = Array.from(
-        { length: 2001 },
+        { length: 10001 },
         (_, i) => `word-${i}`,
       ).join(' ')
       const postActionTool = defineTool({
@@ -239,7 +239,7 @@ describe('browser tool framework post-actions', () => {
           diff: async () => ({
             changed: true,
             text: largeDiff,
-            added: 2001,
+            added: 10001,
             removed: 0,
             afterUrl: 'https://example.com/large',
           }),
@@ -259,7 +259,7 @@ describe('browser tool framework post-actions', () => {
       expect(text).toContain('Showing the first')
       expect(text).toContain('[UNTRUSTED_PAGE_CONTENT')
       expect(text).toContain('word-0')
-      expect(text).not.toContain('word-2000')
+      expect(text).not.toContain('word-10000')
     })
   })
 

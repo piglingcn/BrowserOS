@@ -3,7 +3,7 @@ import { defineTool, textResult } from './framework'
 import { writeTempToolOutputFile } from './output-file'
 import { wrapUntrusted } from './trust-boundary'
 
-const LARGE_SNAPSHOT_WORD_THRESHOLD = 5_000
+const LARGE_SNAPSHOT_WORD_THRESHOLD = 15_000
 const LARGE_SNAPSHOT_CHAR_THRESHOLD = 50_000
 
 function countWords(text: string): number {

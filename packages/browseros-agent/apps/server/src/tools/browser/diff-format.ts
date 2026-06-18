@@ -2,7 +2,7 @@ import type { SnapshotDiff } from '../../browser/core/snapshot/diff'
 import { writeTempToolOutputFile } from './output-file'
 import { wrapUntrusted } from './trust-boundary'
 
-const MAX_INLINE_DIFF_WORDS = 2_000
+const MAX_INLINE_DIFF_WORDS = 10_000
 const MAX_SAVE_FAILURE_EXCERPT_CHARS = 4_000
 
 export interface FormattedDiff {
