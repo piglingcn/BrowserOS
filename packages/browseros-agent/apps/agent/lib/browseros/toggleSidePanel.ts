@@ -1,6 +1,7 @@
-import { getBrowserOSAdapter } from './adapter'
-import { BROWSEROS_PREFS } from './prefs'
-import { openWindowSidePanelIdsStorage } from './sidePanelOpenStateStorage'
+import {
+  openWindowSidePanelIdsStorage,
+  sidePanelPerWindowStorage,
+} from './sidePanelOpenStateStorage'
 
 const SIDEPANEL_PATH = 'sidepanel.html'
 const openWindowSidePanelIds = new Set<number>()
@@ -44,10 +45,8 @@ async function applySidePanelPerWindowPreference(
 async function loadSidePanelScopePreference(): Promise<void> {
   const epoch = sidePanelScopePreferenceEpoch
   try {
-    const pref = await getBrowserOSAdapter().getPref(
-      BROWSEROS_PREFS.SIDE_PANEL_PER_WINDOW,
-    )
-    await applySidePanelPerWindowPreference(pref?.value === true, epoch)
+    const perWindow = await sidePanelPerWindowStorage.getValue()
+    await applySidePanelPerWindowPreference(perWindow, epoch)
   } catch {
     await applySidePanelPerWindowPreference(false, epoch)
   }
