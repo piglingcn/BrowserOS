@@ -12,6 +12,7 @@ const REQUIRED_PROD_VARS = [
 ]
 const INLINED_ENV_VARS = [
   ...REQUIRED_PROD_VARS,
+  'AGENT_RUNNER_JWT_SECRET',
   'NODE_ENV',
   'LOG_LEVEL',
 ] as const
@@ -54,7 +55,7 @@ function buildInlineEnv(
   const inlineEnv: Record<string, string> = {}
   for (const key of INLINED_ENV_VARS) {
     const value = process.env[key] ?? fileEnv[key]
-    if (value !== undefined) {
+    if (value !== undefined && value.trim().length > 0) {
       inlineEnv[key] = value
     }
   }
