@@ -358,6 +358,50 @@ describe('registerBrowserTools', () => {
     )
   })
 
+  it('defaults wait timeouts to two seconds', async () => {
+    const fake = createFakeServer()
+    const session = {
+      pages: {
+        getSession: async () => ({
+          session: {
+            Runtime: {
+              evaluate: async () => ({ result: { value: false } }),
+            },
+          },
+        }),
+      },
+    } as unknown as BrowserSession
+
+    registerBrowserTools(fake.server as never, session)
+
+    const originalNow = Date.now
+    let nowCalls = 0
+    Date.now = () => (nowCalls++ === 0 ? 0 : Number.MAX_SAFE_INTEGER)
+    try {
+      const result = await fake.handlers.get('wait')?.({
+        page: 3,
+        for: 'text',
+        value: 'ready',
+      })
+
+      expect(result?.isError).toBeFalsy()
+      expect(result?.structuredContent).toEqual({ matched: false })
+      expect(result?.content).toEqual([
+        expect.objectContaining({
+          type: 'text',
+          text: 'timed out after 2000ms waiting for text',
+        }),
+      ])
+    } finally {
+      Date.now = originalNow
+    }
+
+    const inputSchema = fake.configs.get('wait')?.inputSchema as
+      | { timeout?: { description?: string } }
+      | undefined
+    expect(inputSchema?.timeout?.description).toContain('default 2000')
+  })
+
   it('runs server-runtime JavaScript against the browser session', async () => {
     const fake = createFakeServer()
     const session = {

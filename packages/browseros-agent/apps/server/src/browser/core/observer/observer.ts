@@ -170,13 +170,6 @@ export class Observer {
     this.refScope = result.scope
   }
 
-  private async readCurrentUrl(session: ProtocolApi): Promise<string> {
-    return readCurrentUrl(session, async () => {
-      const refreshed = await this.pages.refresh(this.pageId)
-      return refreshed?.url
-    })
-  }
-
   private refsForCapture(state: MainFrameState): RefMap {
     if (shouldResetRefs(this.refScope, state)) return new RefMap()
     return this.refs.forkForSnapshot()
@@ -195,9 +188,18 @@ export class Observer {
       }
     } catch {
       return {
-        url: await this.readCurrentUrl(session),
+        url: await this.readRegistryUrl(),
         frameDocuments: new Map(),
       }
+    }
+  }
+
+  /** Reads the tab registry URL after frame-tree lookup has already failed. */
+  private async readRegistryUrl(): Promise<string> {
+    try {
+      return (await this.pages.refresh(this.pageId))?.url ?? 'unknown'
+    } catch {
+      return 'unknown'
     }
   }
 
@@ -223,23 +225,6 @@ export class Observer {
   ): Promise<Map<FrameId | undefined, DocumentId>> {
     const result = await session.Page.getFrameTree()
     return collectFrameDocuments(result.frameTree as FrameTreeNode)
-  }
-}
-
-/** Reads the live main-frame URL, falling back to the tab registry during teardown. */
-async function readCurrentUrl(
-  session: ProtocolApi,
-  fallback: () => Promise<string | undefined>,
-): Promise<string> {
-  try {
-    const result = await session.Page.getFrameTree()
-    const frame = result.frameTree.frame
-    if (frame.url) return `${frame.url}${frame.urlFragment ?? ''}`
-  } catch {}
-  try {
-    return (await fallback()) || 'unknown'
-  } catch {
-    return 'unknown'
   }
 }
 

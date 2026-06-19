@@ -8,7 +8,7 @@ import {
   throwIfAborted,
 } from './framework'
 
-const DEFAULT_WAIT_TIMEOUT_MS = 10_000
+const DEFAULT_WAIT_TIMEOUT_MS = 2_000
 const MAX_WAIT_TIMEOUT_MS = 30_000
 
 export const wait = defineTool({
@@ -22,7 +22,7 @@ export const wait = defineTool({
       .string()
       .optional()
       .describe('Text/selector, or ms for for="time".'),
-    timeout: z.number().optional().describe('Max wait in ms (default 10000).'),
+    timeout: z.number().optional().describe('Max wait in ms (default 2000).'),
   }),
   annotations: { readOnlyHint: true },
   handler: async (args, ctx) => {
