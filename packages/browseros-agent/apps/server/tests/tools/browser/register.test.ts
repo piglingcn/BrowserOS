@@ -567,13 +567,25 @@ return 'late'
     const result = await fake.handlers.get('diff')?.({ page: 1 })
 
     expect(result?.isError).toBeFalsy()
-    expect(result?.structuredContent).toEqual({
+    const data = result?.structuredContent as
+      | {
+          added: number
+          removed: number
+          urlChanged: boolean
+          beforeUrl: string
+          afterUrl: string
+          snapshot: string
+        }
+      | undefined
+    expect(data).toMatchObject({
       added: 0,
       removed: 0,
       urlChanged: true,
       beforeUrl: 'https://example.com/old',
       afterUrl: 'https://example.com/new',
     })
+    expect(data?.snapshot).toContain('[UNTRUSTED_PAGE_CONTENT')
+    expect(data?.snapshot).toContain('- heading "New page"')
     expect(result?.content).toEqual([
       expect.objectContaining({
         type: 'text',
@@ -624,7 +636,13 @@ return 'late'
     const result = await fake.handlers.get('diff')?.({ page: 1 })
 
     expect(result?.isError).toBeFalsy()
-    expect(result?.structuredContent).toEqual({ added: 1, removed: 0 })
+    const data = result?.structuredContent as
+      | { added: number; removed: number; diff: string }
+      | undefined
+    expect(data).toMatchObject({ added: 1, removed: 0 })
+    expect(data?.diff).toContain('origin=https://example.com/current')
+    expect(data?.diff).toContain('+   button "Saved" [ref=e1]')
+    expect(data?.diff).not.toContain('origin=https://example.com/stale')
     expect(result?.content).toEqual([
       expect.objectContaining({
         type: 'text',
@@ -670,12 +688,15 @@ return 'late'
         | {
             added: number
             removed: number
+            diff: string
           }
         | undefined
       expect(data).toMatchObject({
         added: 2001,
         removed: 0,
       })
+      expect(data?.diff).toContain('word-2000')
+      expect(data?.diff).toContain('[UNTRUSTED_PAGE_CONTENT')
       expect(JSON.stringify(result?.structuredContent)).not.toContain('path')
       expect(JSON.stringify(result?.structuredContent)).not.toContain(
         'writtenToFile',
@@ -729,6 +750,7 @@ return 'late'
             path: string
             contentLength: number
             writtenToFile: boolean
+            diff: string
           }
         | undefined
       expect(data).toMatchObject({
@@ -762,6 +784,7 @@ return 'late'
       const savedContent = readFileSync(savedPath ?? '', 'utf8')
       expect(savedContent).toContain('[UNTRUSTED_PAGE_CONTENT')
       expect(savedContent).toContain(lastMarker)
+      expect(data?.diff).toBe(savedContent)
       expect(data?.contentLength).toBe(savedContent.length)
     })
   })
@@ -1221,7 +1244,12 @@ return 'late'
     const result = await fake.handlers.get('snapshot')?.({ page: 2 })
 
     expect(result?.isError).toBeFalsy()
-    expect(result?.structuredContent).toEqual({ page: 2 })
+    const data = result?.structuredContent as
+      | { page: number; snapshot: string }
+      | undefined
+    expect(data).toMatchObject({ page: 2 })
+    expect(data?.snapshot).toContain('[UNTRUSTED_PAGE_CONTENT')
+    expect(data?.snapshot).toContain('- button "Save" [ref=e1]')
     expect(result?.content).toEqual([
       expect.objectContaining({
         type: 'text',
@@ -1257,11 +1285,14 @@ return 'late'
       const data = result?.structuredContent as
         | {
             page: number
+            snapshot: string
           }
         | undefined
       expect(data).toMatchObject({
         page: 4,
       })
+      expect(data?.snapshot).toContain('last-node')
+      expect(data?.snapshot).toContain('[UNTRUSTED_PAGE_CONTENT')
       expect(JSON.stringify(result?.structuredContent)).not.toContain('path')
       expect(result?.content).toEqual([
         expect.objectContaining({
@@ -1303,6 +1334,7 @@ return 'late'
             contentLength: number
             tokenEstimate: number
             writtenToFile: boolean
+            snapshot: string
           }
         | undefined
       expect(data).toMatchObject({
@@ -1331,6 +1363,7 @@ return 'late'
       expect(savedContent).toContain('[UNTRUSTED_PAGE_CONTENT')
       expect(savedContent).toContain('[END_UNTRUSTED_PAGE_CONTENT')
       expect(savedContent).toContain('last-node')
+      expect(data?.snapshot).toBe(savedContent)
       expect(data?.contentLength).toBe(savedContent.length)
     })
   })

@@ -34,6 +34,7 @@ export async function formatSnapshotResult(
           'Read the file for the full snapshot and refs.',
         ].join('\n'),
         structured: {
+          snapshot: wrappedSnapshot,
           path,
           contentLength,
           tokenEstimate,
@@ -50,6 +51,7 @@ export async function formatSnapshotResult(
           wrapUntrusted(excerpt, origin),
         ].join('\n'),
         structured: {
+          snapshot: wrappedSnapshot,
           contentLength,
           tokenEstimate,
           writtenToFile: false,
@@ -60,5 +62,5 @@ export async function formatSnapshotResult(
     }
   }
 
-  return { text: wrappedSnapshot }
+  return { text: wrappedSnapshot, structured: { snapshot: wrappedSnapshot } }
 }
