@@ -194,7 +194,6 @@ apps/cli/
 │   ├── dialog.go       # dialog (handle_dialog)
 │   ├── wait.go         # wait (wait_for)
 │   ├── file_actions.go # pdf, download
-│   ├── dom.go          # dom, dom-search
 │   ├── window.go       # window {list,create,close,activate}
 │   ├── bookmark.go     # bookmark {list,create,remove,update,move,search}
 │   ├── history.go      # history {search,recent,delete,delete-range}
