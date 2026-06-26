@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { Command } from 'commander'
-import { parseDocument } from 'yaml'
 import { z } from 'zod'
 import { CLAW_API_PORT_DEFAULT, CLAW_CDP_PORT_DEFAULT } from './shared/port'
 
@@ -47,7 +46,7 @@ type ConfigIssue = {
   keys?: string[]
 }
 
-/** Loads and validates Claw server ports from defaults, env, and YAML config. */
+/** Loads and validates Claw server ports from defaults, env, and JSON config. */
 export function loadClawConfig(
   options: LoadClawConfigOptions = {},
 ): ConfigResult<ClawConfig> {
@@ -89,7 +88,7 @@ function parseCliArgs(argv: string[]): ConfigResult<{ configPath?: string }> {
     program
       .name('claw-server')
       .description('BrowserClaw standalone API')
-      .option('--config <path>', 'Path to YAML configuration file')
+      .option('--config <path>', 'Path to JSON configuration file')
       .exitOverride((err) => {
         if (err.exitCode === 0) process.exit(0)
         throw err
@@ -151,14 +150,7 @@ function parseConfigFile(
 
   let raw: unknown
   try {
-    const doc = parseDocument(readFileSync(absPath, 'utf-8'))
-    if (doc.errors.length > 0) {
-      return {
-        ok: false,
-        error: `Config file error: ${doc.errors.map((err) => err.message).join('\n')}`,
-      }
-    }
-    raw = doc.toJS()
+    raw = JSON.parse(readFileSync(absPath, 'utf-8'))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { ok: false, error: `Config file error: ${message}` }

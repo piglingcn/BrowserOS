@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * Single chokepoint for non-port env reads. Port config lives in
- * config.ts so startup can validate env/YAML before serving.
+ * config.ts so startup can validate env/JSON before serving.
  */
 
 import type { ClawConfig } from './config'

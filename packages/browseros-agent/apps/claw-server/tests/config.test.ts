@@ -10,7 +10,7 @@ import {
 
 async function writeConfig(contents: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'claw-config-'))
-  const path = join(dir, 'config.yaml')
+  const path = join(dir, 'config.json')
   await writeFile(path, contents)
   return path
 }
@@ -47,12 +47,15 @@ describe('loadClawConfig', () => {
     })
   })
 
-  test('reads ports from a YAML config file', async () => {
-    const configPath = await writeConfig(`
-ports:
-  server: 9420
-  cdp: 9020
-`)
+  test('reads ports from a JSON config file', async () => {
+    const configPath = await writeConfig(
+      JSON.stringify({
+        ports: {
+          server: 9420,
+          cdp: 9020,
+        },
+      }),
+    )
 
     const result = loadClawConfig({
       argv: [],
@@ -69,12 +72,15 @@ ports:
     })
   })
 
-  test('lets env ports override YAML config values', async () => {
-    const configPath = await writeConfig(`
-ports:
-  server: 9520
-  cdp: 9120
-`)
+  test('lets env ports override JSON config values', async () => {
+    const configPath = await writeConfig(
+      JSON.stringify({
+        ports: {
+          server: 9520,
+          cdp: 9120,
+        },
+      }),
+    )
 
     const result = loadClawConfig({
       argv: [],
@@ -96,16 +102,22 @@ ports:
   })
 
   test('--config wins over CLAW_CONFIG for the config file path', async () => {
-    const envConfigPath = await writeConfig(`
-ports:
-  server: 9300
-  cdp: 9000
-`)
-    const cliConfigPath = await writeConfig(`
-ports:
-  server: 9600
-  cdp: 9200
-`)
+    const envConfigPath = await writeConfig(
+      JSON.stringify({
+        ports: {
+          server: 9300,
+          cdp: 9000,
+        },
+      }),
+    )
+    const cliConfigPath = await writeConfig(
+      JSON.stringify({
+        ports: {
+          server: 9600,
+          cdp: 9200,
+        },
+      }),
+    )
 
     const result = loadClawConfig({
       argv: ['bun', 'src/main.ts', '--config', cliConfigPath],
@@ -136,10 +148,13 @@ ports:
   })
 
   test('rejects a blank --config value instead of falling back to CLAW_CONFIG', async () => {
-    const envConfigPath = await writeConfig(`
-ports:
-  server: 9300
-`)
+    const envConfigPath = await writeConfig(
+      JSON.stringify({
+        ports: {
+          server: 9300,
+        },
+      }),
+    )
 
     const result = loadClawConfig({
       argv: ['--config', '   '],
@@ -167,11 +182,14 @@ ports:
     }
   })
 
-  test('returns a clear error for invalid YAML ports', async () => {
-    const configPath = await writeConfig(`
-ports:
-  server: 70000
-`)
+  test('returns a clear error for invalid JSON ports', async () => {
+    const configPath = await writeConfig(
+      JSON.stringify({
+        ports: {
+          server: 70000,
+        },
+      }),
+    )
 
     const result = loadClawConfig({
       argv: ['--config', configPath],
@@ -186,11 +204,14 @@ ports:
     }
   })
 
-  test('returns a clear error for unknown YAML port keys', async () => {
-    const configPath = await writeConfig(`
-ports:
-  cdpPort: 9020
-`)
+  test('returns a clear error for unknown JSON port keys', async () => {
+    const configPath = await writeConfig(
+      JSON.stringify({
+        ports: {
+          cdpPort: 9020,
+        },
+      }),
+    )
 
     const result = loadClawConfig({
       argv: ['--config', configPath],
@@ -205,10 +226,13 @@ ports:
     }
   })
 
-  test('returns a clear error for malformed YAML', async () => {
+  test('returns a clear error for malformed JSON', async () => {
     const configPath = await writeConfig(`
-ports:
-  server: [9200
+{
+  "ports": {
+    "server": 9200,
+  }
+}
 `)
 
     const result = loadClawConfig({
@@ -220,20 +244,20 @@ ports:
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error).toContain('Config file error:')
-      expect(result.error).toContain('Flow sequence')
+      expect(result.error).toContain('JSON')
     }
   })
 
   test('returns a clear error for a missing config file', () => {
     const result = loadClawConfig({
-      argv: ['--config', '/missing/claw.yaml'],
+      argv: ['--config', '/missing/claw.json'],
       cwd: '/',
       env: {},
     })
 
     expect(result).toEqual({
       ok: false,
-      error: 'Config file not found: /missing/claw.yaml',
+      error: 'Config file not found: /missing/claw.json',
     })
   })
 })
