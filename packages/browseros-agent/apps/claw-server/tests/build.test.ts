@@ -73,6 +73,7 @@ describe('claw server build', () => {
   it('builds a local artifact without apps/server env files', async () => {
     rmSync(zipPath, { force: true })
     const pkg = await Bun.file(clawPkgPath).json()
+    const expectedVersion: string = pkg.version
 
     const build = Bun.spawn(['bun', buildScript, `--target=${target.id}`], {
       cwd: rootDir,
@@ -98,8 +99,23 @@ describe('claw server build', () => {
     )
 
     const metadata = JSON.parse(readFileSync(metadataPath, 'utf-8'))
-    assert.strictEqual(metadata.version, pkg.version)
+    assert.strictEqual(metadata.version, expectedVersion)
     assert.strictEqual(metadata.target, target.id)
+
+    const versionResult = await collectProcess(
+      Bun.spawn([binaryPath, '--version'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      }),
+    )
+    assert.strictEqual(
+      versionResult.exitCode,
+      0,
+      `Binary --version exited non-zero:\n${versionResult.stderr}`,
+    )
+    const actualVersion = versionResult.stdout.trim()
+    assert.strictEqual(actualVersion, expectedVersion)
+    assert.notStrictEqual(actualVersion, Bun.version)
 
     const zipListing = await collectProcess(
       Bun.spawn(['unzip', '-l', zipPath], {

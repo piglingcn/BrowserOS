@@ -3,6 +3,7 @@ import { dirname, isAbsolute, resolve } from 'node:path'
 import { Command } from 'commander'
 import { z } from 'zod'
 import { CLAW_API_PORT_DEFAULT, CLAW_CDP_PORT_DEFAULT } from './shared/port'
+import { VERSION } from './version'
 
 const portSchema = z.number().int().min(1).max(65535)
 const optionalPortSchema = z.preprocess(
@@ -120,6 +121,7 @@ function parseCliArgs(
     program
       .name('claw-server')
       .description('BrowserClaw standalone API')
+      .version(VERSION)
       .option('--config <path>', 'Path to JSON configuration file')
       .option('--resources-dir <path>', 'Resources directory path')
       .exitOverride((err) => {
