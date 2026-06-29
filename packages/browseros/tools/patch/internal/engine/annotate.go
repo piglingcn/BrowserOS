@@ -18,14 +18,12 @@ import (
 type AnnotateOptions struct {
 	Workspace workspace.Entry
 	Repo      *repo.Info
-	Feature   string
 	Progress  Progress
 }
 
 type AnnotateResult struct {
 	Workspace       string                     `json:"workspace"`
 	FeaturesFile    string                     `json:"features_file"`
-	Feature         string                     `json:"feature,omitempty"`
 	Processed       int                        `json:"processed"`
 	CommitsCreated  int                        `json:"commits_created"`
 	FeaturesSkipped int                        `json:"features_skipped"`
@@ -66,16 +64,6 @@ func Annotate(ctx context.Context, opts AnnotateOptions) (*AnnotateResult, error
 	if err != nil {
 		return nil, err
 	}
-	allFeatures := features
-	if opts.Feature != "" {
-		filtered := slices.DeleteFunc(slices.Clone(features), func(feature annotateFeature) bool {
-			return feature.Name != opts.Feature
-		})
-		if len(filtered) == 0 {
-			return nil, fmt.Errorf("feature %q not found in features.yaml", opts.Feature)
-		}
-		features = filtered
-	}
 	changes, err := annotateChanges(ctx, opts.Workspace.Path)
 	if err != nil {
 		return nil, err
@@ -83,7 +71,6 @@ func Annotate(ctx context.Context, opts AnnotateOptions) (*AnnotateResult, error
 	result := &AnnotateResult{
 		Workspace:    opts.Workspace.Name,
 		FeaturesFile: featuresFile,
-		Feature:      opts.Feature,
 		Committed:    []AnnotateCommittedFeature{},
 		Skipped:      []AnnotateSkippedFeature{},
 	}
@@ -99,7 +86,7 @@ func Annotate(ctx context.Context, opts AnnotateOptions) (*AnnotateResult, error
 			result.FeaturesSkipped++
 			continue
 		}
-		files := modifiedFeatureFiles(changes, feature, allFeatures)
+		files := modifiedFeatureFiles(changes, feature, features)
 		if len(files.report) == 0 {
 			result.Skipped = append(result.Skipped, AnnotateSkippedFeature{
 				Name:        feature.Name,

@@ -78,8 +78,7 @@ Capture flow (turn checkout changes into patches):
 3. browseros-patch publish -m "chore: sync patches"   # commit + push chromium_patches
 
 Feature commit flow (turn checkout changes into feature commits):
-1. browseros-patch annotate ch1            # commit changed files by build/features.yaml feature
-2. browseros-patch annotate ch1 api        # commit only one feature
+1. browseros-patch annotate ch1            # commit changed files for all build/features.yaml features
 
 Chromium upgrade loop (move patches to a new Chromium base):
 1. gclient sync the checkout to the new Chromium revision.

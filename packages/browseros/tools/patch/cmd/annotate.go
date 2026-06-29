@@ -12,15 +12,14 @@ import (
 func init() {
 	var src string
 	command := &cobra.Command{
-		Use:         "annotate [checkout] [feature]",
+		Use:         "annotate [checkout]",
 		Annotations: map[string]string{"group": "Core:"},
 		Short:       "Create feature commits in a checkout",
 		Example: `  browseros-patch annotate ch1
-  browseros-patch annotate ch1 api
-  browseros-patch annotate --src /path/to/chromium/src api`,
-		Args: cobra.MaximumNArgs(2),
+  browseros-patch annotate --src /path/to/chromium/src`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ws, feature, err := resolveAnnotateTarget(cmd, args, src)
+			ws, err := resolveAnnotateTarget(cmd, args, src)
 			if err != nil {
 				return err
 			}
@@ -31,7 +30,6 @@ func init() {
 			result, err := engine.Annotate(cmd.Context(), engine.AnnotateOptions{
 				Workspace: ws,
 				Repo:      info,
-				Feature:   feature,
 				Progress:  commandProgress(cmd),
 			})
 			if err != nil {
@@ -46,37 +44,11 @@ func init() {
 	rootCmd.AddCommand(command)
 }
 
-func resolveAnnotateTarget(cmd *cobra.Command, args []string, src string) (workspace.Entry, string, error) {
-	if src != "" {
-		if len(args) > 1 {
-			return workspace.Entry{}, "", fmt.Errorf("with --src, pass at most one feature name")
-		}
-		ws, err := resolveWorkspace(cmd, nil, src)
-		feature := ""
-		if len(args) == 1 {
-			feature = args[0]
-		}
-		return ws, feature, err
+func resolveAnnotateTarget(cmd *cobra.Command, args []string, src string) (workspace.Entry, error) {
+	if src != "" && len(args) > 0 {
+		return workspace.Entry{}, fmt.Errorf("with --src, do not pass a checkout")
 	}
-	switch len(args) {
-	case 0:
-		ws, err := resolveWorkspace(cmd, nil, "")
-		return ws, "", err
-	case 1:
-		if _, err := appState.Registry.Get(args[0]); err == nil {
-			ws, resolveErr := resolveWorkspace(cmd, args, "")
-			return ws, "", resolveErr
-		}
-		ws, detectErr := resolveWorkspace(cmd, nil, "")
-		if detectErr == nil {
-			return ws, args[0], nil
-		}
-		ws, resolveErr := resolveWorkspace(cmd, args, "")
-		return ws, "", resolveErr
-	default:
-		ws, err := resolveWorkspace(cmd, args[:1], "")
-		return ws, args[1], err
-	}
+	return resolveWorkspace(cmd, args, src)
 }
 
 func printAnnotateResult(ws workspace.Entry, result *engine.AnnotateResult) {

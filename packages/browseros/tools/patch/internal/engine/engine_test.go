@@ -180,53 +180,6 @@ features:
 	}
 }
 
-func TestAnnotateSingleFeatureLeavesOtherChanges(t *testing.T) {
-	ctx := context.Background()
-	workspacePath := initGitRepo(t)
-	writeFile(t, filepath.Join(workspacePath, "chrome", "a.cc"), "a\n")
-	writeFile(t, filepath.Join(workspacePath, "chrome", "b.cc"), "b\n")
-	runGit(t, workspacePath, "add", "chrome")
-	runGit(t, workspacePath, "commit", "-m", "workspace base")
-	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
-
-	writeFile(t, filepath.Join(workspacePath, "chrome", "a.cc"), "a changed\n")
-	writeFile(t, filepath.Join(workspacePath, "chrome", "b.cc"), "b changed\n")
-
-	repoInfo := newPatchRepo(t, baseCommit)
-	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
-features:
-  feature-a:
-    description: "feat: a"
-    files:
-      - chrome/a.cc
-  feature-b:
-    description: "feat: b"
-    files:
-      - chrome/b.cc
-`)
-
-	result, err := Annotate(ctx, AnnotateOptions{
-		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
-		Repo:      repoInfo,
-		Feature:   "feature-a",
-	})
-	if err != nil {
-		t.Fatalf("Annotate: %v", err)
-	}
-	if result.CommitsCreated != 1 || result.Processed != 1 {
-		t.Fatalf("unexpected result: %+v", result)
-	}
-	if subject := gitOutput(t, workspacePath, "log", "-1", "--format=%s"); subject != "feat: a" {
-		t.Fatalf("commit subject = %q, want feat: a", subject)
-	}
-	if status := gitOutput(t, workspacePath, "status", "--porcelain", "--", "chrome/b.cc"); status == "" {
-		t.Fatalf("expected unannotated feature-b change to remain dirty")
-	}
-	if status := gitOutput(t, workspacePath, "status", "--porcelain", "--", "chrome/a.cc"); status != "" {
-		t.Fatalf("expected annotated feature-a path clean, got %q", status)
-	}
-}
-
 func TestAnnotateAssignsOverlappingPathsToMostSpecificFeature(t *testing.T) {
 	ctx := context.Background()
 	workspacePath := initGitRepo(t)
@@ -273,48 +226,6 @@ features:
 	}
 	if files := strings.Split(gitOutput(t, workspacePath, "show", "--name-only", "--format=", "HEAD"), "\n"); !slices.Equal(files, []string{"chrome/browser/browseros/core/browseros_prefs.cc"}) {
 		t.Fatalf("specific commit files = %v", files)
-	}
-}
-
-func TestAnnotateSingleFeatureDoesNotStealMoreSpecificOverlap(t *testing.T) {
-	ctx := context.Background()
-	workspacePath := initGitRepo(t)
-	writeFile(t, filepath.Join(workspacePath, "chrome", "browser", "browseros", "core", "browseros_prefs.cc"), "prefs\n")
-	runGit(t, workspacePath, "add", "chrome")
-	runGit(t, workspacePath, "commit", "-m", "workspace base")
-	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
-
-	writeFile(t, filepath.Join(workspacePath, "chrome", "browser", "browseros", "core", "browseros_prefs.cc"), "prefs changed\n")
-
-	repoInfo := newPatchRepo(t, baseCommit)
-	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
-features:
-  browseros-core:
-    description: "chore: browseros core"
-    files:
-      - chrome/browser/browseros/core/
-  onboarding-import:
-    description: "feat: onboarding import"
-    files:
-      - chrome/browser/browseros/core/browseros_prefs.cc
-`)
-
-	result, err := Annotate(ctx, AnnotateOptions{
-		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
-		Repo:      repoInfo,
-		Feature:   "browseros-core",
-	})
-	if err != nil {
-		t.Fatalf("Annotate: %v", err)
-	}
-	if result.CommitsCreated != 0 || result.FeaturesSkipped != 1 {
-		t.Fatalf("expected broad feature to skip specific overlap, got %+v", result)
-	}
-	if head := gitOutput(t, workspacePath, "log", "-1", "--format=%s"); head != "workspace base" {
-		t.Fatalf("broad feature should not commit overlap, got head %q", head)
-	}
-	if status := gitOutput(t, workspacePath, "status", "--porcelain"); status == "" {
-		t.Fatalf("specific overlap change should remain dirty")
 	}
 }
 
@@ -523,39 +434,6 @@ features:
 	}
 	if nameStatus := gitOutput(t, workspacePath, "show", "--name-status", "--format=", "HEAD"); !strings.Contains(nameStatus, "R100\tchrome/old.cc\tchrome/new.cc") {
 		t.Fatalf("expected rename in commit, got:\n%s", nameStatus)
-	}
-}
-
-func TestAnnotateMissingFeatureDoesNotCommit(t *testing.T) {
-	ctx := context.Background()
-	workspacePath := initGitRepo(t)
-	writeFile(t, filepath.Join(workspacePath, "chrome", "a.cc"), "a\n")
-	runGit(t, workspacePath, "add", "chrome/a.cc")
-	runGit(t, workspacePath, "commit", "-m", "workspace base")
-	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
-	headBefore := gitOutput(t, workspacePath, "rev-parse", "HEAD")
-
-	writeFile(t, filepath.Join(workspacePath, "chrome", "a.cc"), "a changed\n")
-
-	repoInfo := newPatchRepo(t, baseCommit)
-	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
-features:
-  feature-a:
-    description: "feat: a"
-    files:
-      - chrome/a.cc
-`)
-
-	_, err := Annotate(ctx, AnnotateOptions{
-		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
-		Repo:      repoInfo,
-		Feature:   "missing",
-	})
-	if err == nil || !strings.Contains(err.Error(), `feature "missing" not found`) {
-		t.Fatalf("expected missing feature error, got %v", err)
-	}
-	if headAfter := gitOutput(t, workspacePath, "rev-parse", "HEAD"); headAfter != headBefore {
-		t.Fatalf("missing feature should not commit: before %s after %s", headBefore, headAfter)
 	}
 }
 
