@@ -3,13 +3,14 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: resolve-component-release.sh --component agent-extension|agent-server --tag <tag> --default-branch <branch>
+Usage: resolve-component-release.sh --component agent-extension|agent-server --tag <tag> --default-branch <branch> [--allow-package-version-mismatch]
 EOF
 }
 
 component=""
 tag=""
 default_branch=""
+allow_package_version_mismatch=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -24,6 +25,10 @@ while [ "$#" -gt 0 ]; do
     --default-branch)
       default_branch="${2:-}"
       shift 2
+      ;;
+    --allow-package-version-mismatch)
+      allow_package_version_mismatch=true
+      shift
       ;;
     -h|--help)
       usage
@@ -187,9 +192,13 @@ except Exception as exc:
   exit 1
 fi
 
+package_version_matches=true
 if [ "$package_version" != "$tag_version" ]; then
-  echo "Tag version $tag_version does not match $package_json version $package_version" >&2
-  exit 1
+  package_version_matches=false
+  if [ "$allow_package_version_mismatch" != "true" ]; then
+    echo "Tag version $tag_version does not match $package_json version $package_version" >&2
+    exit 1
+  fi
 fi
 
 default_ref=""
@@ -246,6 +255,7 @@ fi
 
 emit version "$tag_version"
 emit package_version "$package_version"
+emit package_version_matches "$package_version_matches"
 emit tag "$tag"
 emit release_sha "$release_sha"
 emit previous_tag "$latest_tag"

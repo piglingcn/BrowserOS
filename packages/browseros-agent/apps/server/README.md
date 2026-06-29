@@ -153,14 +153,16 @@ bun scripts/build/server.ts --target=all --no-upload
 
 ## Release Flow
 
-Server releases use annotated component tags. First bump `packages/browseros-agent/apps/server/package.json` in a PR, merge that version commit to the default branch, then tag the merged commit:
+Server releases use annotated component tags. The preferred flow is to bump `packages/browseros-agent/apps/server/package.json` in a PR, merge that version commit to the default branch, then tag the merged commit:
 
 ```bash
 git tag -a agent-server/v0.0.122 -m "agent-server v0.0.122"
 git push origin agent-server/v0.0.122
 ```
 
-The release workflow validates that the tag version matches `apps/server/package.json`, that the tagged commit is reachable from the default branch, and that the version is newer than existing `browseros-server-v*` and `agent-server/v*` tags. Legacy `browseros-server-vX.Y.Z` tags remain historical; new GitHub Releases use `agent-server/vX.Y.Z`.
+For tag-first releases, you may push `agent-server/vX.Y.Z` at the current default-branch tip before the package bump. If `apps/server/package.json` still has the previous version, the workflow sets `apps/server/package.json` and `bun.lock` to `X.Y.Z`, commits that bump to the default branch, recreates the annotated tag on the bump commit, and releases from that matching commit. Auto-bump is refused when the tag points at an older default-branch commit; in that case, bump in a PR and tag the merged commit.
+
+The release workflow validates that the tag version matches `apps/server/package.json` before publishing, that the tagged commit is reachable from the default branch, and that the version is newer than existing `browseros-server-v*` and `agent-server/v*` tags. Legacy `browseros-server-vX.Y.Z` tags remain historical; new GitHub Releases use `agent-server/vX.Y.Z`.
 
 The workflow-call and nightly paths can still build/upload server artifacts without publishing a GitHub Release by setting `publish_github_release=false`; that preserves the existing `bump_server_version.py` flow for target-specific builds.
 

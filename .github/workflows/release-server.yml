@@ -74,6 +74,7 @@ jobs:
     needs: authorize_manual_dispatch
     if: |
       always() &&
+      github.event.deleted != true &&
       (github.event_name != 'workflow_dispatch' || needs.authorize_manual_dispatch.result == 'success')
     runs-on: ubuntu-latest
     outputs:
@@ -140,15 +141,15 @@ jobs:
             local version="$1"
             cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           Maintainer release flow:
-          1. Bump packages/browseros-agent/apps/server/package.json in a PR and merge it.
+          1. Preferred: bump packages/browseros-agent/apps/server/package.json in a PR and merge it.
           2. git tag -a agent-server/v${version} -m "agent-server v${version}"
           3. git push origin agent-server/v${version}
+          4. If the tag points at the current default-branch tip but the package version lags, this workflow commits the bump and retags before release.
           EOF
           }
 
           if [ "$EVENT_NAME" = "push" ]; then
-            ./scripts/release/resolve-component-release.sh \
-              --component agent-server \
+            ./scripts/release/prepare-server-tag-release.sh \
               --tag "$RELEASE_TAG" \
               --default-branch "$DEFAULT_BRANCH"
             write_release_flow_summary "${RELEASE_TAG#agent-server/v}"

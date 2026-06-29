@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 const repoRoot = resolve(import.meta.dir, '../..')
 const resolver = join(repoRoot, 'scripts/release/resolve-component-release.sh')
+const prepareServerRelease = join(
+  repoRoot,
+  'scripts/release/prepare-server-tag-release.sh',
+)
+const bumpServerVersion = join(
+  repoRoot,
+  '../browseros/build/scripts/bump_server_version.py',
+)
 
 type Component = 'agent-extension' | 'agent-server'
 
@@ -111,6 +125,25 @@ function writeNestedPackage(
   return packageDir
 }
 
+function writeServerLock(dir: string, version: string): void {
+  writeFileSync(
+    join(dir, 'bun.lock'),
+    JSON.stringify(
+      {
+        lockfileVersion: 1,
+        workspaces: {
+          'apps/server': {
+            name: '@browseros/server',
+            version,
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  )
+}
+
 async function commitVersion(
   dir: string,
   component: Component,
@@ -129,7 +162,12 @@ async function lightweightTag(dir: string, name: string): Promise<void> {
   await mustRun(dir, ['git', 'tag', name])
 }
 
-async function resolveRelease(dir: string, component: Component, name: string) {
+async function resolveRelease(
+  dir: string,
+  component: Component,
+  name: string,
+  extraArgs: string[] = [],
+) {
   return run(dir, [
     resolver,
     '--component',
@@ -138,6 +176,21 @@ async function resolveRelease(dir: string, component: Component, name: string) {
     name,
     '--default-branch',
     'main',
+    ...extraArgs,
+  ])
+}
+
+async function prepareServerTagRelease(dir: string, name: string) {
+  return run(dir, [
+    prepareServerRelease,
+    '--tag',
+    name,
+    '--default-branch',
+    'main',
+    '--agent-root',
+    dir,
+    '--bump-script',
+    bumpServerVersion,
   ])
 }
 
@@ -284,6 +337,28 @@ describe('resolve-component-release', () => {
     }
   })
 
+  it('can preflight a package version mismatch for repair', async () => {
+    const dir = await initFixture('agent-extension', '0.0.99')
+    try {
+      const currentTag = scopedTag('agent-extension', '0.0.100')
+      await tag(dir, currentTag)
+
+      const result = await resolveRelease(dir, 'agent-extension', currentTag, [
+        '--allow-package-version-mismatch',
+      ])
+
+      expect(result.code, result.stderr).toBe(0)
+      expect(parseOutput(result.stdout)).toMatchObject({
+        version: '0.0.100',
+        package_version: '0.0.99',
+        package_version_matches: 'false',
+        tag: currentTag,
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('validates the package version from the tagged commit instead of the current checkout', async () => {
     const dir = await initFixture('agent-extension', '0.0.99')
     try {
@@ -386,6 +461,211 @@ describe('resolve-component-release', () => {
       rmSync(sourceDir, { recursive: true, force: true })
       rmSync(bareDir, { recursive: true, force: true })
       rmSync(checkoutDir, { recursive: true, force: true })
+    }
+  })
+
+  it('repairs a current-tip server tag by committing the requested version and retagging it', async () => {
+    const dir = await initFixture('agent-server', '0.0.122')
+    const bareDir = mkdtempSync(join(tmpdir(), 'component-release-remote-'))
+    try {
+      writeServerLock(dir, '0.0.122')
+      await mustRun(dir, ['git', 'add', 'bun.lock'])
+      await mustRun(dir, ['git', 'commit', '-m', 'add server lock'])
+      await mustRun(bareDir, ['git', 'init', '--bare'])
+      await mustRun(dir, ['git', 'remote', 'add', 'origin', bareDir])
+      await mustRun(dir, ['git', 'push', '-u', 'origin', 'main'])
+
+      const oldSha = (await mustRun(dir, ['git', 'rev-parse', 'HEAD'])).trim()
+      const currentTag = scopedTag('agent-server', '0.0.123')
+      await tag(dir, currentTag)
+      await mustRun(dir, ['git', 'push', 'origin', currentTag])
+
+      const result = await prepareServerTagRelease(dir, currentTag)
+
+      expect(result.code, result.stderr).toBe(0)
+      const output = parseOutput(result.stdout)
+      expect(output).toMatchObject({
+        version: '0.0.123',
+        package_version: '0.0.123',
+        package_version_matches: 'true',
+        tag: currentTag,
+        previous_tag: '',
+      })
+      expect(output.release_sha).not.toBe(oldSha)
+      expect(
+        (await mustRun(dir, ['git', 'rev-parse', 'origin/main'])).trim(),
+      ).toBe(output.release_sha)
+      expect(
+        (await mustRun(dir, ['git', 'rev-list', '-n', '1', currentTag])).trim(),
+      ).toBe(output.release_sha)
+      expect(
+        (
+          await mustRun(dir, [
+            'git',
+            'cat-file',
+            '-t',
+            `refs/tags/${currentTag}`,
+          ])
+        ).trim(),
+      ).toBe('tag')
+      expect(
+        (
+          await mustRun(dir, [
+            'git',
+            'show',
+            `${output.release_sha}:apps/server/package.json`,
+          ])
+        ).trim(),
+      ).toContain('"version": "0.0.123"')
+      expect(
+        (
+          await mustRun(dir, ['git', 'show', `${output.release_sha}:bun.lock`])
+        ).trim(),
+      ).toContain('"version": "0.0.123"')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(bareDir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses to repair a mismatched server tag that is not the current default-branch tip', async () => {
+    const dir = await initFixture('agent-server', '0.0.122')
+    const bareDir = mkdtempSync(join(tmpdir(), 'component-release-remote-'))
+    try {
+      writeServerLock(dir, '0.0.122')
+      await mustRun(dir, ['git', 'add', 'bun.lock'])
+      await mustRun(dir, ['git', 'commit', '-m', 'add server lock'])
+      await mustRun(bareDir, ['git', 'init', '--bare'])
+      await mustRun(dir, ['git', 'remote', 'add', 'origin', bareDir])
+      await mustRun(dir, ['git', 'push', '-u', 'origin', 'main'])
+
+      const oldSha = (await mustRun(dir, ['git', 'rev-parse', 'HEAD'])).trim()
+      const currentTag = scopedTag('agent-server', '0.0.123')
+      await tag(dir, currentTag)
+      await mustRun(dir, ['git', 'push', 'origin', currentTag])
+      writeFileSync(join(dir, 'README.md'), 'advance main\n')
+      await mustRun(dir, ['git', 'add', 'README.md'])
+      await mustRun(dir, ['git', 'commit', '-m', 'advance main'])
+      await mustRun(dir, ['git', 'push', 'origin', 'main'])
+
+      const result = await prepareServerTagRelease(dir, currentTag)
+
+      expect(result.code).toBe(1)
+      expect(result.stderr).toContain(
+        `Auto-bump requires ${currentTag} to point at current origin/main`,
+      )
+      expect(
+        (await mustRun(dir, ['git', 'rev-list', '-n', '1', currentTag])).trim(),
+      ).toBe(oldSha)
+      expect(
+        (
+          await mustRun(dir, [
+            'git',
+            'show',
+            `${oldSha}:apps/server/package.json`,
+          ])
+        ).trim(),
+      ).toContain('"version": "0.0.122"')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(bareDir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses to repair a server tag by downgrading the package version', async () => {
+    const dir = await initFixture('agent-server', '0.0.124')
+    const bareDir = mkdtempSync(join(tmpdir(), 'component-release-remote-'))
+    try {
+      writeServerLock(dir, '0.0.124')
+      await mustRun(dir, ['git', 'add', 'bun.lock'])
+      await mustRun(dir, ['git', 'commit', '-m', 'add server lock'])
+      await mustRun(bareDir, ['git', 'init', '--bare'])
+      await mustRun(dir, ['git', 'remote', 'add', 'origin', bareDir])
+      await mustRun(dir, ['git', 'push', '-u', 'origin', 'main'])
+
+      const currentTag = scopedTag('agent-server', '0.0.123')
+      await tag(dir, currentTag)
+      await mustRun(dir, ['git', 'push', 'origin', currentTag])
+
+      const result = await prepareServerTagRelease(dir, currentTag)
+
+      expect(result.code).toBe(1)
+      expect(result.stderr).toContain(
+        'Auto-bump requires tag version 0.0.123 to be greater than package version 0.0.124',
+      )
+      expect(
+        (
+          await mustRun(dir, ['git', 'show', 'HEAD:apps/server/package.json'])
+        ).trim(),
+      ).toContain('"version": "0.0.124"')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(bareDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not advance the default branch when the repaired tag push is rejected', async () => {
+    const dir = await initFixture('agent-server', '0.0.122')
+    const bareDir = mkdtempSync(join(tmpdir(), 'component-release-remote-'))
+    try {
+      writeServerLock(dir, '0.0.122')
+      await mustRun(dir, ['git', 'add', 'bun.lock'])
+      await mustRun(dir, ['git', 'commit', '-m', 'add server lock'])
+      await mustRun(bareDir, ['git', 'init', '--bare'])
+      await mustRun(dir, ['git', 'remote', 'add', 'origin', bareDir])
+      await mustRun(dir, ['git', 'push', '-u', 'origin', 'main'])
+
+      const oldSha = (await mustRun(dir, ['git', 'rev-parse', 'HEAD'])).trim()
+      const currentTag = scopedTag('agent-server', '0.0.123')
+      await tag(dir, currentTag)
+      await mustRun(dir, ['git', 'push', 'origin', currentTag])
+      const hook = join(bareDir, 'hooks', 'pre-receive')
+      writeFileSync(
+        hook,
+        [
+          '#!/usr/bin/env bash',
+          'while read -r _old _new ref; do',
+          `  if [ "$ref" = "refs/tags/${currentTag}" ]; then`,
+          '    echo "tag updates blocked" >&2',
+          '    exit 1',
+          '  fi',
+          'done',
+          '',
+        ].join('\n'),
+      )
+      chmodSync(hook, 0o755)
+
+      const result = await prepareServerTagRelease(dir, currentTag)
+
+      expect(result.code).toBe(1)
+      expect(result.stderr).toContain('tag updates blocked')
+      expect(
+        (
+          await mustRun(dir, [
+            'git',
+            '--git-dir',
+            bareDir,
+            'rev-parse',
+            'refs/heads/main',
+          ])
+        ).trim(),
+      ).toBe(oldSha)
+      expect(
+        (
+          await mustRun(dir, [
+            'git',
+            '--git-dir',
+            bareDir,
+            'rev-list',
+            '-n',
+            '1',
+            currentTag,
+          ])
+        ).trim(),
+      ).toBe(oldSha)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(bareDir, { recursive: true, force: true })
     }
   })
 })
