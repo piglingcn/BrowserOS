@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/app"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/engine"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -92,6 +93,118 @@ func TestConflictPauseErrorClassification(t *testing.T) {
 	}
 	if exitErr.code != 2 {
 		t.Fatalf("conflict pause exit code = %d, want 2", exitErr.code)
+	}
+}
+
+func TestResolveAnnotateTargetUsesSrcArgAsFeature(t *testing.T) {
+	oldAppState := appState
+	t.Cleanup(func() {
+		appState = oldAppState
+	})
+
+	checkout := filepath.Join(t.TempDir(), "chromium")
+	if err := os.MkdirAll(filepath.Join(checkout, ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	appState = &app.App{
+		CWD:      t.TempDir(),
+		Registry: &workspace.Registry{Version: 1},
+	}
+
+	ws, feature, err := resolveAnnotateTarget(&cobra.Command{Use: "annotate"}, []string{"api"}, checkout)
+	if err != nil {
+		t.Fatalf("resolveAnnotateTarget: %v", err)
+	}
+	realCheckout, err := filepath.EvalSymlinks(checkout)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	if ws.Path != realCheckout || feature != "api" {
+		t.Fatalf("got workspace=%+v feature=%q, want src path and api feature", ws, feature)
+	}
+}
+
+func TestResolveAnnotateTargetTreatsUnknownSingleArgAsFeatureInCheckout(t *testing.T) {
+	oldAppState := appState
+	t.Cleanup(func() {
+		appState = oldAppState
+	})
+
+	checkout := filepath.Join(t.TempDir(), "chromium")
+	cwd := filepath.Join(checkout, "chrome")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	appState = &app.App{
+		CWD: cwd,
+		Registry: &workspace.Registry{Version: 1, Workspaces: []workspace.Entry{
+			{Name: "ch1", Path: checkout},
+		}},
+	}
+
+	ws, feature, err := resolveAnnotateTarget(&cobra.Command{Use: "annotate"}, []string{"api"}, "")
+	if err != nil {
+		t.Fatalf("resolveAnnotateTarget: %v", err)
+	}
+	if ws.Name != "ch1" || feature != "api" {
+		t.Fatalf("got workspace=%+v feature=%q, want ch1 and api", ws, feature)
+	}
+}
+
+func TestResolveAnnotateTargetTreatsRegisteredSingleArgAsCheckout(t *testing.T) {
+	oldAppState := appState
+	t.Cleanup(func() {
+		appState = oldAppState
+	})
+
+	checkout := filepath.Join(t.TempDir(), "chromium")
+	appState = &app.App{
+		CWD: t.TempDir(),
+		Registry: &workspace.Registry{Version: 1, Workspaces: []workspace.Entry{
+			{Name: "api", Path: checkout},
+		}},
+	}
+
+	ws, feature, err := resolveAnnotateTarget(&cobra.Command{Use: "annotate"}, []string{"api"}, "")
+	if err != nil {
+		t.Fatalf("resolveAnnotateTarget: %v", err)
+	}
+	if ws.Name != "api" || feature != "" {
+		t.Fatalf("got workspace=%+v feature=%q, want api checkout and empty feature", ws, feature)
+	}
+}
+
+func TestPrintAnnotateResultSummarizesHumanOutput(t *testing.T) {
+	output := captureStdout(t, func() {
+		printAnnotateResult(workspace.Entry{Name: "ch1"}, &engine.AnnotateResult{
+			FeaturesFile:    "/repo/build/features.yaml",
+			Processed:       2,
+			CommitsCreated:  1,
+			FeaturesSkipped: 1,
+			Committed: []engine.AnnotateCommittedFeature{{
+				Name:   "api",
+				Commit: "1234567890abcdef",
+				Files:  []string{"chrome/a.cc"},
+			}},
+			Skipped: []engine.AnnotateSkippedFeature{{
+				Name:   "clean",
+				Reason: "no changes",
+			}},
+		})
+	})
+
+	for _, want := range []string{
+		"Annotated ch1",
+		"processed:",
+		"commits:",
+		"api",
+		"1234567890ab",
+		"clean",
+		"no changes",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, output)
+		}
 	}
 }
 
@@ -220,6 +333,7 @@ func TestCheckoutCommandUsageTerminology(t *testing.T) {
 		{name: "apply", use: "apply [checkout] [-- files...]"},
 		{name: "sync", use: "sync [checkout]"},
 		{name: "extract", use: "extract [checkout] [--range <start> <end>] [-- files...]"},
+		{name: "annotate", use: "annotate [checkout] [feature]"},
 	} {
 		cmd, _, err := rootCmd.Find([]string{tc.name})
 		if err != nil {
@@ -252,10 +366,17 @@ func TestRootHelpExplainsPatchRepoAndCheckoutModel(t *testing.T) {
 		"browseros-patch diff ch1",
 		"browseros-patch sync ch1",
 		"browseros-patch extract ch1",
+		"browseros-patch annotate ch1",
 	} {
 		if !strings.Contains(rootCmd.Example, want) {
 			t.Fatalf("expected root examples to contain %q, got:\n%s", want, rootCmd.Example)
 		}
+	}
+}
+
+func TestRootExamplesDoNotRenderSourceTabs(t *testing.T) {
+	if strings.Contains(rootCmd.Example, "\n\t") {
+		t.Fatalf("root examples should render with spaces, got:\n%s", rootCmd.Example)
 	}
 }
 
@@ -269,6 +390,7 @@ func TestCheckoutCommandExamplesUseNamedCheckout(t *testing.T) {
 		{name: "apply", example: "browseros-patch apply ch1"},
 		{name: "sync", example: "browseros-patch sync ch1"},
 		{name: "extract", example: "browseros-patch extract ch1"},
+		{name: "annotate", example: "browseros-patch annotate ch1"},
 	} {
 		cmd, _, err := rootCmd.Find([]string{tc.name})
 		if err != nil {
@@ -281,7 +403,7 @@ func TestCheckoutCommandExamplesUseNamedCheckout(t *testing.T) {
 }
 
 func TestSrcFlagExplainsDirectCheckoutPath(t *testing.T) {
-	for _, name := range []string{"diff", "status", "apply", "sync", "extract"} {
+	for _, name := range []string{"diff", "status", "apply", "sync", "extract", "annotate"} {
 		cmd, _, err := rootCmd.Find([]string{name})
 		if err != nil {
 			t.Fatalf("find %s: %v", name, err)
@@ -310,6 +432,7 @@ func TestLLMTxtGuideContent(t *testing.T) {
 		"browseros-patch sync ch1",
 		"browseros-patch apply ch1",
 		"browseros-patch extract ch1",
+		"browseros-patch annotate ch1",
 		"list reads only registered Chromium checkouts",
 		"does not inspect sync state",
 		// agent playbook
@@ -321,6 +444,7 @@ func TestLLMTxtGuideContent(t *testing.T) {
 		"browseros-patch skip",
 		"browseros-patch abort",
 		"browseros-patch extract ch1 --dry-run",
+		"browseros-patch annotate ch1 api",
 		".browseros-patchignore",
 		"BASE_COMMIT",
 		"browseros-patch publish",

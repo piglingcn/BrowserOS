@@ -53,7 +53,7 @@ Rules:
 - Checkout commands work from anywhere when passed a checkout name: browseros-patch diff ch1.
 - browseros-patch list reads only registered Chromium checkouts; it does not inspect sync state.
 - Use browseros-patch status ch1 or browseros-patch diff ch1 before mutating.
-- Mutating commands: browseros-patch sync ch1 (alias: pull), browseros-patch apply ch1, browseros-patch extract ch1.
+- Mutating commands: browseros-patch sync ch1 (alias: pull), browseros-patch apply ch1, browseros-patch extract ch1, browseros-patch annotate ch1.
 - Every command accepts --json for machine-readable output and never prompts.
 
 Exit codes:
@@ -76,6 +76,10 @@ Capture flow (turn checkout changes into patches):
 1. browseros-patch extract ch1 --dry-run   # preview created/updated/deleted/unchanged
 2. browseros-patch extract ch1             # write; unchanged patches are never rewritten
 3. browseros-patch publish -m "chore: sync patches"   # commit + push chromium_patches
+
+Feature commit flow (turn checkout changes into feature commits):
+1. browseros-patch annotate ch1            # commit changed files by build/features.yaml feature
+2. browseros-patch annotate ch1 api        # commit only one feature
 
 Chromium upgrade loop (move patches to a new Chromium base):
 1. gclient sync the checkout to the new Chromium revision.

@@ -100,6 +100,58 @@ func IsDirtyPaths(ctx context.Context, dir string, pathspecs []string) (bool, er
 	return strings.TrimSpace(result.Stdout) != "", nil
 }
 
+// StatusPorcelain returns tracked and untracked working-tree changes.
+func StatusPorcelain(ctx context.Context, dir string, pathspecs []string) ([]FileChange, error) {
+	args := []string{"-c", "core.quotepath=false", "status", "--porcelain", "--untracked-files=all"}
+	if len(pathspecs) > 0 {
+		args = append(args, "--")
+		args = append(args, pathspecs...)
+	}
+	result, err := Run(ctx, dir, nil, args...)
+	if err != nil {
+		return nil, err
+	}
+	if result.Code != 0 {
+		return nil, errors.New(strings.TrimSpace(result.Stderr))
+	}
+	var changes []FileChange
+	for _, line := range strings.Split(strings.TrimRight(result.Stdout, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		if len(line) < 4 {
+			continue
+		}
+		status := line[:2]
+		rel := line[3:]
+		change := FileChange{Status: status, Path: rel}
+		if strings.Contains(rel, " -> ") {
+			parts := strings.SplitN(rel, " -> ", 2)
+			change.OldPath = parts[0]
+			change.Path = parts[1]
+		}
+		changes = append(changes, change)
+	}
+	return changes, nil
+}
+
+// CommitPaths creates a commit scoped to paths and returns the new HEAD.
+func CommitPaths(ctx context.Context, dir string, message string, paths []string) (string, error) {
+	args := []string{"commit", "-m", message}
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	result, err := Run(ctx, dir, nil, args...)
+	if err != nil {
+		return "", err
+	}
+	if result.Code != 0 {
+		return "", errors.New(strings.TrimSpace(result.Stderr))
+	}
+	return HeadRev(ctx, dir)
+}
+
 func CommitExists(ctx context.Context, dir string, ref string) (bool, error) {
 	result, err := Run(ctx, dir, nil, "rev-parse", "--verify", ref+"^{commit}")
 	if err != nil {
@@ -633,11 +685,28 @@ func PullRebase(ctx context.Context, dir string, remote string, branch string) e
 	return nil
 }
 
+// AddPaths stages existing paths with git add.
 func AddPaths(ctx context.Context, dir string, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
 	args := append([]string{"add", "--"}, paths...)
+	result, err := Run(ctx, dir, nil, args...)
+	if err != nil {
+		return err
+	}
+	if result.Code != 0 {
+		return errors.New(strings.TrimSpace(result.Stderr))
+	}
+	return nil
+}
+
+// AddAllPaths stages additions, modifications, and deletions under paths.
+func AddAllPaths(ctx context.Context, dir string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"add", "-A", "--"}, paths...)
 	result, err := Run(ctx, dir, nil, args...)
 	if err != nil {
 		return err

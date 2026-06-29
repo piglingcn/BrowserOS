@@ -93,11 +93,12 @@ var rootCmd = &cobra.Command{
   Chromium checkout: a named local Chromium src tree, such as ch1
 
 Pass a checkout name to run from anywhere, for example "browseros-patch diff ch1".`,
-	Example: `  browseros-patch add ch1 /path/to/chromium/src
-  browseros-patch list
-  browseros-patch diff ch1
-  browseros-patch sync ch1
-  browseros-patch extract ch1`,
+	Example: "  browseros-patch add ch1 /path/to/chromium/src\n" +
+		"  browseros-patch list\n" +
+		"  browseros-patch diff ch1\n" +
+		"  browseros-patch sync ch1\n" +
+		"  browseros-patch extract ch1\n" +
+		"  browseros-patch annotate ch1",
 	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
