@@ -74,16 +74,20 @@ func defaultRunPaths() (runPaths, error) {
 	return newRunPaths(path), nil
 }
 
-func daemonArgs(headless bool) []string {
-	args := []string{"daemon"}
+func daemonArgs(target config.Target, headless bool) []string {
+	targetFlag, err := selectedTargetFlag(target)
+	if err != nil {
+		targetFlag = "--browseros"
+	}
+	args := []string{targetFlag, "daemon"}
 	if headless {
 		args = append(args, "--headless")
 	}
 	return args
 }
 
-func daemonArgsWithOptions(headless bool, refreshProfile bool) []string {
-	args := daemonArgs(headless)
+func daemonArgsWithOptions(target config.Target, headless bool, refreshProfile bool) []string {
+	args := daemonArgs(target, headless)
 	if refreshProfile {
 		args = append(args, "--refresh-profile")
 	}
@@ -132,7 +136,7 @@ func runningError(paths runPaths) error {
 	return fmt.Errorf("browseros-dogfood is already running")
 }
 
-func startBackgroundProcess(paths runPaths, headless bool, refreshProfile bool) error {
+func startBackgroundProcess(paths runPaths, target config.Target, headless bool, refreshProfile bool) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -149,7 +153,7 @@ func startBackgroundProcess(paths runPaths, headless bool, refreshProfile bool) 
 	}
 	defer rawLog.Close()
 
-	cmd := exec.Command(exe, daemonArgsWithOptions(headless, refreshProfile)...)
+	cmd := exec.Command(exe, daemonArgsWithOptions(target, headless, refreshProfile)...)
 	cmd.Stdout = rawLog
 	cmd.Stderr = rawLog
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -174,13 +178,14 @@ func startBackgroundProcess(paths runPaths, headless bool, refreshProfile bool) 
 			return fmt.Errorf("background daemon did not open its control socket; see %s", paths.RawLog)
 		case <-tick.C:
 			if resp, err := ipc.NewClient(paths.Socket).Send(ipc.Request{Command: ipc.CmdStatus}); err == nil && resp.OK {
-				fmt.Printf("%s browseros-dogfood background daemon %s\n", successStyle.Sprint("Started:"), dimStyle.Sprintf("(pid %d)", cmd.Process.Pid))
+				fmt.Printf("%s %s background daemon %s\n", successStyle.Sprint("Started:"), targetLabel(target), dimStyle.Sprintf("(pid %d)", cmd.Process.Pid))
 				fmt.Fprintln(os.Stdout, dimStyle.Sprint("Streaming startup logs until healthy..."))
 				detach, cleanup := newInterruptDetach()
 				defer cleanup()
 				detached := false
 				if err := monitorDaemonUntilRunning(context.Background(), daemonMonitor{
 					Paths:     paths,
+					Target:    target,
 					Out:       os.Stdout,
 					FromStart: true,
 					Detach:    detach,
@@ -191,10 +196,11 @@ func startBackgroundProcess(paths runPaths, headless bool, refreshProfile bool) 
 				if detached {
 					return nil
 				}
-				fmt.Printf("%s browseros-dogfood background environment is healthy\n", successStyle.Sprint("Ready:"))
-				fmt.Printf("  %s %s\n", labelStyle.Sprint("Status:"), commandStyle.Sprint("browseros-dogfood status"))
-				fmt.Printf("  %s   %s\n", labelStyle.Sprint("Logs:"), commandStyle.Sprint("browseros-dogfood logs tail"))
-				fmt.Printf("  %s   %s\n", labelStyle.Sprint("Stop:"), commandStyle.Sprint("browseros-dogfood stop"))
+				targetFlag, _ := selectedTargetFlag(target)
+				fmt.Printf("%s %s background environment is healthy\n", successStyle.Sprint("Ready:"), targetLabel(target))
+				fmt.Printf("  %s %s\n", labelStyle.Sprint("Status:"), commandStyle.Sprintf("browseros-dogfood %s status", targetFlag))
+				fmt.Printf("  %s   %s\n", labelStyle.Sprint("Logs:"), commandStyle.Sprintf("browseros-dogfood %s logs tail", targetFlag))
+				fmt.Printf("  %s   %s\n", labelStyle.Sprint("Stop:"), commandStyle.Sprintf("browseros-dogfood %s stop", targetFlag))
 				return nil
 			}
 		}
@@ -230,6 +236,7 @@ type dogfoodDaemon struct {
 	mu   sync.RWMutex
 
 	env          *environment
+	target       config.Target
 	state        string
 	operation    string
 	lastError    string
@@ -240,6 +247,7 @@ type dogfoodDaemon struct {
 }
 
 type daemonStatus struct {
+	Target       string       `json:"target"`
 	State        string       `json:"state"`
 	Operation    string       `json:"operation,omitempty"`
 	LastError    string       `json:"last_error,omitempty"`
@@ -247,6 +255,7 @@ type daemonStatus struct {
 	Uptime       string       `json:"uptime"`
 	Ports        config.Ports `json:"ports"`
 	BrowserOSDir string       `json:"browseros_dir"`
+	StateDir     string       `json:"state_dir"`
 	LogPath      string       `json:"log_path"`
 }
 
@@ -255,11 +264,11 @@ type healthResponse struct {
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
-	cfg, err := loadConfig()
+	target, cfg, err := loadSelectedTargetConfig()
 	if err != nil {
 		return err
 	}
-	paths, err := defaultRunPaths()
+	paths, err := defaultTargetRunPaths(target)
 	if err != nil {
 		return err
 	}
@@ -286,6 +295,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		cancel:       cancel,
 		paths:        paths,
 		logWriter:    logWriter,
+		target:       target,
 		state:        "starting",
 		startedAt:    time.Now(),
 		headless:     daemonHeadless,
@@ -344,6 +354,7 @@ func (d *dogfoodDaemon) status() daemonStatus {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return daemonStatus{
+		Target:       string(d.target),
 		State:        d.state,
 		Operation:    d.operation,
 		LastError:    d.lastError,
@@ -351,6 +362,7 @@ func (d *dogfoodDaemon) status() daemonStatus {
 		Uptime:       time.Since(d.startedAt).Round(time.Second).String(),
 		Ports:        d.ports,
 		BrowserOSDir: d.browserOSDir,
+		StateDir:     d.browserOSDir,
 		LogPath:      d.paths.Log,
 	}
 }
@@ -361,7 +373,7 @@ func (d *dogfoodDaemon) scheduleRestart(pull bool, force bool) error {
 	}
 	return d.scheduleOperation("restarting", func() error {
 		if pull {
-			cfg, err := loadConfig()
+			cfg, err := loadTargetConfig(d.target)
 			if err != nil {
 				return err
 			}
@@ -419,7 +431,7 @@ func (d *dogfoodDaemon) scheduleOperation(name string, fn func() error) error {
 }
 
 func (d *dogfoodDaemon) startLocked(refreshProfile bool) error {
-	cfg, err := loadConfig()
+	cfg, err := loadTargetConfig(d.target)
 	if err != nil {
 		return err
 	}
@@ -497,16 +509,16 @@ func (d *dogfoodDaemon) logLifecycle(format string, args ...any) {
 
 func (d *dogfoodDaemon) waitUntilHealthy(cfg config.Config, maxAttempts int, interval time.Duration) error {
 	d.logLifecycle("waiting for server health")
-	if err := waitForServerHealth(d.ctx, cfg.Ports.Server, maxAttempts, interval); err != nil {
+	if err := waitForServerHealth(d.ctx, cfg, maxAttempts, interval); err != nil {
 		return err
 	}
 	d.logLifecycle("server healthy")
 	return nil
 }
 
-func waitForServerHealth(ctx context.Context, port int, maxAttempts int, interval time.Duration) error {
+func waitForServerHealth(ctx context.Context, cfg config.Config, maxAttempts int, interval time.Duration) error {
 	client := &http.Client{Timeout: time.Second}
-	url := fmt.Sprintf("http://127.0.0.1:%d/health", port)
+	url := healthURL(cfg)
 	var lastErr error
 	for range maxAttempts {
 		if ctx.Err() != nil {
@@ -538,4 +550,11 @@ func waitForServerHealth(ctx context.Context, port int, maxAttempts int, interva
 		return fmt.Errorf("server health check failed: %w", lastErr)
 	}
 	return fmt.Errorf("server health check failed")
+}
+
+func healthURL(cfg config.Config) string {
+	if cfg.Target == config.TargetClaw {
+		return fmt.Sprintf("http://127.0.0.1:%d/system/health", cfg.Ports.Server)
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d/health", cfg.Ports.Server)
 }

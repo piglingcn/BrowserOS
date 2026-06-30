@@ -1,8 +1,10 @@
 package ipc
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,6 +39,12 @@ func TestClientReportsMissingDaemon(t *testing.T) {
 	_, err := NewClient(filepath.Join(t.TempDir(), "missing.sock")).Send(Request{Command: CmdStatus})
 	if err == nil {
 		t.Fatal("expected missing daemon error")
+	}
+	if !errors.Is(err, ErrDaemonNotRunning) {
+		t.Fatalf("error got %v want ErrDaemonNotRunning", err)
+	}
+	if strings.Contains(err.Error(), "browseros-dogfood start-background") {
+		t.Fatalf("ipc layer should not include targetless CLI advice: %v", err)
 	}
 }
 

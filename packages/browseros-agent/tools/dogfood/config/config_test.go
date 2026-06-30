@@ -17,7 +17,7 @@ func TestDefaults(t *testing.T) {
 	if cfg.SourceUserDataDir != filepath.Join(home, "Library/Application Support/BrowserOS") {
 		t.Fatalf("unexpected source dir: %s", cfg.SourceUserDataDir)
 	}
-	if cfg.DevUserDataDir != filepath.Join(home, ".config/browseros-dogfood/profile") {
+	if cfg.DevUserDataDir != filepath.Join(home, ".config/browseros-dogfood/browseros/profile") {
 		t.Fatalf("unexpected dev dir: %s", cfg.DevUserDataDir)
 	}
 	if cfg.BrowserOSDir != filepath.Join(home, ".browseros-dogfood") {
@@ -26,7 +26,7 @@ func TestDefaults(t *testing.T) {
 	if cfg.Branch != "main" {
 		t.Fatalf("unexpected branch: %s", cfg.Branch)
 	}
-	if cfg.LogDir() != filepath.Join(home, ".config/browseros-dogfood/profile/logs") {
+	if cfg.LogDir() != filepath.Join(home, ".config/browseros-dogfood/browseros/profile/logs") {
 		t.Fatalf("unexpected log dir: %s", cfg.LogDir())
 	}
 	if cfg.DevProfileDir != "Default" {
@@ -46,6 +46,25 @@ func TestDefaults(t *testing.T) {
 	}
 	if cfg.ProductionEnv.CLI["R2_UPLOAD_PREFIX"] != "" {
 		t.Fatalf("cli upload prefix got %q want empty", cfg.ProductionEnv.CLI["R2_UPLOAD_PREFIX"])
+	}
+}
+
+func TestClawDefaultsUseSeparateRuntimePaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "")
+	cfg := Defaults(home)
+	if err := cfg.ApplyTarget(TargetClaw); err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.DevUserDataDir != filepath.Join(home, ".config/browseros-dogfood/claw/profile") {
+		t.Fatalf("unexpected claw profile dir: %s", cfg.DevUserDataDir)
+	}
+	if cfg.BrowserOSDir != filepath.Join(home, ".browseros-claw-dogfood") {
+		t.Fatalf("unexpected claw state dir: %s", cfg.BrowserOSDir)
+	}
+	if cfg.Ports.CDP != 49337 || cfg.Ports.Server != 9200 || cfg.Ports.Extension != 0 {
+		t.Fatalf("unexpected claw ports: %+v", cfg.Ports)
 	}
 }
 
@@ -101,6 +120,73 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadLegacyFlatConfigMapsRuntimeToBrowserOSTarget(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	data := []byte(`
+repo_path: /repo
+browseros_app_path: /bin/sh
+source_user_data_dir: /source
+source_profile_dir: Default
+dev_user_data_dir: /legacy-profile
+dev_profile_dir: Profile 1
+browseros_dir: /legacy-state
+branch: main
+ports:
+  cdp: 1111
+  server: 2222
+  extension: 3333
+`)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browseros := cfg.Targets[string(TargetBrowserOS)]
+	if browseros.DevUserDataDir != "/legacy-profile" || browseros.BrowserOSDir != "/legacy-state" {
+		t.Fatalf("legacy runtime not mapped to browseros target: %+v", browseros)
+	}
+	if browseros.Ports != (Ports{CDP: 1111, Server: 2222, Extension: 3333}) {
+		t.Fatalf("legacy ports not mapped: %+v", browseros.Ports)
+	}
+	claw := cfg.Targets[string(TargetClaw)]
+	if claw.DevUserDataDir == browseros.DevUserDataDir || claw.BrowserOSDir == browseros.BrowserOSDir {
+		t.Fatalf("claw target should keep separate defaults: browseros=%+v claw=%+v", browseros, claw)
+	}
+}
+
+func TestSaveSelectedClawDoesNotOverwriteBrowserOSTarget(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := Defaults(home)
+	if err := cfg.ApplyTarget(TargetClaw); err != nil {
+		t.Fatal(err)
+	}
+	cfg.DevUserDataDir = "/custom-claw-profile"
+	cfg.BrowserOSDir = "/custom-claw-state"
+	cfg.Ports = Ports{CDP: 49338, Server: 9201}
+
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	browseros := got.Targets[string(TargetBrowserOS)]
+	if browseros.DevUserDataDir == "/custom-claw-profile" || browseros.BrowserOSDir == "/custom-claw-state" {
+		t.Fatalf("browseros target was overwritten by claw runtime: %+v", browseros)
+	}
+	claw := got.Targets[string(TargetClaw)]
+	if claw.DevUserDataDir != "/custom-claw-profile" || claw.BrowserOSDir != "/custom-claw-state" {
+		t.Fatalf("claw target was not saved: %+v", claw)
+	}
+}
+
 func TestResolveDefaultsBranch(t *testing.T) {
 	cfg := Config{}
 
@@ -108,6 +194,24 @@ func TestResolveDefaultsBranch(t *testing.T) {
 
 	if cfg.Branch != "main" {
 		t.Fatalf("branch got %q want main", cfg.Branch)
+	}
+}
+
+func TestResolvePreservesSelectedTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := Defaults(home)
+	if err := cfg.ApplyTarget(TargetClaw); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.Resolve()
+
+	if cfg.Target != TargetClaw {
+		t.Fatalf("target got %q want claw", cfg.Target)
+	}
+	if cfg.DevUserDataDir != filepath.Join(home, ".config/browseros-dogfood/claw/profile") {
+		t.Fatalf("dev profile got %q", cfg.DevUserDataDir)
 	}
 }
 

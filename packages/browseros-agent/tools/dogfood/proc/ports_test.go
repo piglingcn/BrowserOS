@@ -40,6 +40,24 @@ func TestResolvePortsAvoidsDuplicates(t *testing.T) {
 	}
 }
 
+func TestResolveTargetPortsCanSkipExtensionPort(t *testing.T) {
+	cdp := freePort(t)
+	server := freePort(t)
+	for server == cdp {
+		server = freePort(t)
+	}
+	got, changed, err := ResolveTargetPorts(config.Ports{CDP: cdp, Server: server}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatalf("available CDP/API ports should not change: %+v", got)
+	}
+	if got.Extension != 0 {
+		t.Fatalf("extension port should stay unset for claw: %+v", got)
+	}
+}
+
 func freePort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

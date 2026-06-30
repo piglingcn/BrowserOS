@@ -16,21 +16,21 @@ import (
 )
 
 func TestRunPathsLiveBesideConfig(t *testing.T) {
-	paths := newRunPaths(filepath.Join("/tmp", "browseros-dogfood", "config.yaml"))
-	if paths.Lock != filepath.Join("/tmp", "browseros-dogfood", "run.lock") {
+	paths := newTargetRunPaths(filepath.Join("/tmp", "browseros-dogfood", "config.yaml"), config.TargetClaw)
+	if paths.Lock != filepath.Join("/tmp", "browseros-dogfood", "claw", "run.lock") {
 		t.Fatalf("lock path got %q", paths.Lock)
 	}
-	if paths.Socket != filepath.Join("/tmp", "browseros-dogfood", "daemon.sock") {
+	if paths.Socket != filepath.Join("/tmp", "browseros-dogfood", "claw", "daemon.sock") {
 		t.Fatalf("socket path got %q", paths.Socket)
 	}
-	if paths.Log != filepath.Join("/tmp", "browseros-dogfood", "daemon.jsonl") {
+	if paths.Log != filepath.Join("/tmp", "browseros-dogfood", "claw", "daemon.jsonl") {
 		t.Fatalf("log path got %q", paths.Log)
 	}
 }
 
 func TestDaemonArgsIncludeHeadlessWhenRequested(t *testing.T) {
-	got := daemonArgs(true)
-	want := []string{"daemon", "--headless"}
+	got := daemonArgs(config.TargetClaw, true)
+	want := []string{"--claw", "daemon", "--headless"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v want %#v", got, want)
 	}
@@ -89,7 +89,7 @@ func TestWaitForServerHealthRequiresCDPConnectedWhenPresent(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := waitForServerHealth(ctx, port, 5, 10*time.Millisecond); err != nil {
+	if err := waitForServerHealth(ctx, config.Config{Ports: config.Ports{Server: port}}, 5, 10*time.Millisecond); err != nil {
 		t.Fatalf("wait health: %v", err)
 	}
 	if requests < 2 {
@@ -105,8 +105,18 @@ func TestWaitForServerHealthAcceptsMissingCDPConnected(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := waitForServerHealth(ctx, port, 1, 10*time.Millisecond); err != nil {
+	if err := waitForServerHealth(ctx, config.Config{Ports: config.Ports{Server: port}}, 1, 10*time.Millisecond); err != nil {
 		t.Fatalf("wait health: %v", err)
+	}
+}
+
+func TestHealthURLUsesClawSystemHealth(t *testing.T) {
+	got := healthURL(config.Config{
+		Target: config.TargetClaw,
+		Ports:  config.Ports{Server: 9200},
+	})
+	if got != "http://127.0.0.1:9200/system/health" {
+		t.Fatalf("got %q", got)
 	}
 }
 

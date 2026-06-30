@@ -8,9 +8,18 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:               "browseros-dogfood",
-	Short:             "BrowserOS dogfooding CLI",
-	Long:              "browseros-dogfood - BrowserOS dogfooding CLI",
+	Use:   "browseros-dogfood",
+	Short: "BrowserOS dogfooding CLI",
+	Long:  "browseros-dogfood - BrowserOS dogfooding CLI",
+	Example: `  browseros-dogfood --browseros init
+  browseros-dogfood --claw init
+  browseros-dogfood --browseros start
+  browseros-dogfood --claw start
+  browseros-dogfood --claw start-background
+  browseros-dogfood --claw status
+  browseros-dogfood --claw logs tail
+  browseros-dogfood --claw restart --pull
+  browseros-dogfood --claw stop`,
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	SilenceUsage:      true,
 	SilenceErrors:     true,

@@ -129,7 +129,7 @@ func NewClientWithTimeout(socketPath string, responseTimeout time.Duration) *Cli
 func (c *Client) Send(req Request) (Response, error) {
 	conn, err := net.DialTimeout("unix", c.socketPath, 700*time.Millisecond)
 	if err != nil {
-		return Response{}, fmt.Errorf("%w; start it with `browseros-dogfood start-background`", ErrDaemonNotRunning)
+		return Response{}, ErrDaemonNotRunning
 	}
 	defer conn.Close()
 

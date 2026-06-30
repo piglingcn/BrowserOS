@@ -16,10 +16,10 @@ func init() {
 
 var logsCmd = &cobra.Command{
 	Use:     "logs",
-	Short:   "Print browseros-dogfood log files",
+	Short:   "Print dogfood log files",
 	GroupID: groupInspect,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfigWithoutValidation()
+		_, cfg, err := loadSelectedTargetConfigWithoutValidation()
 		if err != nil {
 			return err
 		}

@@ -17,10 +17,10 @@ func init() {
 
 var pullCmd = &cobra.Command{
 	Use:     "pull",
-	Short:   "Refresh the configured BrowserOS checkout",
+	Short:   "Refresh the configured checkout",
 	GroupID: groupRun,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
+		_, cfg, err := loadSelectedTargetConfig()
 		if err != nil {
 			return err
 		}

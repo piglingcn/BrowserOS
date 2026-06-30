@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"browseros-dogfood/config"
 	"browseros-dogfood/ipc"
 	"browseros-dogfood/proc"
 	"browseros-dogfood/runlog"
@@ -27,6 +28,7 @@ const defaultMonitorPollInterval = 250 * time.Millisecond
 
 type daemonMonitor struct {
 	Paths        runPaths
+	Target       config.Target
 	Out          io.Writer
 	Filter       string
 	FromStart    bool
@@ -39,10 +41,14 @@ type daemonMonitor struct {
 
 var statusCmd = &cobra.Command{
 	Use:     "status",
-	Short:   "Show browseros-dogfood background daemon status",
+	Short:   "Show dogfood background daemon status",
 	GroupID: groupInspect,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		resp, err := sendControl(ipc.Request{Command: ipc.CmdStatus})
+		target, err := selectedRequiredTarget()
+		if err != nil {
+			return err
+		}
+		resp, err := sendControl(target, ipc.Request{Command: ipc.CmdStatus})
 		if err != nil {
 			return err
 		}
@@ -53,13 +59,17 @@ var statusCmd = &cobra.Command{
 
 var stopCmd = &cobra.Command{
 	Use:     "stop",
-	Short:   "Stop the browseros-dogfood background daemon",
+	Short:   "Stop the dogfood background daemon",
 	GroupID: groupRun,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := sendControl(ipc.Request{Command: ipc.CmdStop}); err != nil {
+		target, err := selectedRequiredTarget()
+		if err != nil {
 			return err
 		}
-		fmt.Printf("%s browseros-dogfood background daemon\n", successStyle.Sprint("Stopping:"))
+		if _, err := sendControl(target, ipc.Request{Command: ipc.CmdStop}); err != nil {
+			return err
+		}
+		fmt.Printf("%s %s background daemon\n", successStyle.Sprint("Stopping:"), targetLabel(target))
 		return nil
 	},
 }
@@ -69,15 +79,19 @@ var restartCmd = &cobra.Command{
 	Short:   "Rebuild/restart current checkout; --pull updates, --pull --force resets",
 	GroupID: groupRun,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		target, err := selectedRequiredTarget()
+		if err != nil {
+			return err
+		}
 		request, err := buildRestartRequest(restartPull, restartForce)
 		if err != nil {
 			return err
 		}
-		paths, err := defaultRunPaths()
+		paths, err := defaultTargetRunPaths(target)
 		if err != nil {
 			return err
 		}
-		if _, err := sendControlWithPaths(paths, request); err != nil {
+		if _, err := sendControlWithPaths(paths, target, request); err != nil {
 			return err
 		}
 		fmt.Fprintln(os.Stdout, successStyle.Sprint("Restart requested."))
@@ -86,6 +100,7 @@ var restartCmd = &cobra.Command{
 		detached := false
 		if err := monitorDaemonUntilRunning(cmd.Context(), daemonMonitor{
 			Paths:    paths,
+			Target:   target,
 			Out:      os.Stdout,
 			Detach:   detach,
 			Detached: &detached,
@@ -93,7 +108,7 @@ var restartCmd = &cobra.Command{
 			return err
 		}
 		if !detached {
-			fmt.Printf("%s browseros-dogfood background environment is healthy\n", successStyle.Sprint("Ready:"))
+			fmt.Printf("%s %s background environment is healthy\n", successStyle.Sprint("Ready:"), targetLabel(target))
 		}
 		return nil
 	},
@@ -103,11 +118,15 @@ var logsTailCmd = &cobra.Command{
 	Use:   "tail",
 	Short: "Tail daemon, chromium, and server logs from the background daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		paths, err := defaultRunPaths()
+		target, err := selectedRequiredTarget()
 		if err != nil {
 			return err
 		}
-		resp, err := sendControlWithPaths(paths, ipc.Request{Command: ipc.CmdStatus})
+		paths, err := defaultTargetRunPaths(target)
+		if err != nil {
+			return err
+		}
+		resp, err := sendControlWithPaths(paths, target, ipc.Request{Command: ipc.CmdStatus})
 		if err != nil {
 			return err
 		}
@@ -151,18 +170,18 @@ func buildRestartRequest(pull bool, force bool) (ipc.Request, error) {
 	return request, nil
 }
 
-func sendControl(req ipc.Request) (ipc.Response, error) {
-	paths, err := defaultRunPaths()
+func sendControl(target config.Target, req ipc.Request) (ipc.Response, error) {
+	paths, err := defaultTargetRunPaths(target)
 	if err != nil {
 		return ipc.Response{}, err
 	}
-	return sendControlWithPaths(paths, req)
+	return sendControlWithPaths(paths, target, req)
 }
 
-func sendControlWithPaths(paths runPaths, req ipc.Request) (ipc.Response, error) {
+func sendControlWithPaths(paths runPaths, target config.Target, req ipc.Request) (ipc.Response, error) {
 	resp, err := ipc.NewClient(paths.Socket).Send(req)
 	if err != nil {
-		return ipc.Response{}, daemonUnavailableError(paths, err)
+		return ipc.Response{}, daemonUnavailableError(paths, target, err)
 	}
 	if resp.Error != "" {
 		return ipc.Response{}, errors.New(resp.Error)
@@ -170,11 +189,14 @@ func sendControlWithPaths(paths runPaths, req ipc.Request) (ipc.Response, error)
 	return resp, nil
 }
 
-func daemonUnavailableError(paths runPaths, cause error) error {
+func daemonUnavailableError(paths runPaths, target config.Target, cause error) error {
 	lock, err := dogfoodruntime.AcquireLock(paths.Lock)
 	if err == nil {
 		_ = lock.Close()
 		_ = dogfoodruntime.CleanupStaleRunFiles(paths.State)
+		if errors.Is(cause, ipc.ErrDaemonNotRunning) {
+			return fmt.Errorf("%w; start it with `browseros-dogfood %s start-background`", cause, targetFlagOrDefault(target))
+		}
 		return cause
 	}
 	if errors.Is(err, dogfoodruntime.ErrAlreadyRunning) {
@@ -182,7 +204,8 @@ func daemonUnavailableError(paths runPaths, cause error) error {
 		if stateErr == nil && state.Mode == "foreground" {
 			return fmt.Errorf("browseros-dogfood is running in foreground mode (pid %d); background daemon commands are unavailable", state.PID)
 		}
-		return fmt.Errorf("browseros-dogfood background daemon is not responding; try `browseros-dogfood stop` if it is stuck, then `browseros-dogfood start-background`")
+		targetFlag := targetFlagOrDefault(target)
+		return fmt.Errorf("browseros-dogfood background daemon is not responding; try `browseros-dogfood %s stop` if it is stuck, then `browseros-dogfood %s start-background`", targetFlag, targetFlag)
 	}
 	return err
 }
@@ -206,7 +229,7 @@ func monitorDaemonUntilRunning(ctx context.Context, monitor daemonMonitor) error
 	status := monitor.Status
 	if status == nil {
 		status = func() (ipc.Response, error) {
-			return sendControlWithPaths(monitor.Paths, ipc.Request{Command: ipc.CmdStatus})
+			return sendControlWithPaths(monitor.Paths, monitor.Target, ipc.Request{Command: ipc.CmdStatus})
 		}
 	}
 	follow := monitor.Follow
@@ -223,7 +246,7 @@ func monitorDaemonUntilRunning(ctx context.Context, monitor daemonMonitor) error
 		})
 	}()
 
-	if done, err := daemonReachedTerminalState(status); done || err != nil {
+	if done, err := daemonReachedTerminalState(status, monitor.Target); done || err != nil {
 		return err
 	}
 	ticker := time.NewTicker(pollInterval)
@@ -236,21 +259,22 @@ func monitorDaemonUntilRunning(ctx context.Context, monitor daemonMonitor) error
 			if monitor.Detached != nil {
 				*monitor.Detached = true
 			}
-			fmt.Fprintf(out, "%s daemon still running. Run %s to reattach.\n", warnStyle.Sprint("Detached;"), commandStyle.Sprint("browseros-dogfood logs tail"))
+			targetFlag := targetFlagOrDefault(monitor.Target)
+			fmt.Fprintf(out, "%s daemon still running. Run %s to reattach.\n", warnStyle.Sprint("Detached;"), commandStyle.Sprintf("browseros-dogfood %s logs tail", targetFlag))
 			return nil
 		case err := <-followErr:
 			if err != nil && ctx.Err() == nil {
 				return err
 			}
 		case <-ticker.C:
-			if done, err := daemonReachedTerminalState(status); done || err != nil {
+			if done, err := daemonReachedTerminalState(status, monitor.Target); done || err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func daemonReachedTerminalState(status func() (ipc.Response, error)) (bool, error) {
+func daemonReachedTerminalState(status func() (ipc.Response, error), target config.Target) (bool, error) {
 	resp, err := status()
 	if err != nil {
 		return false, err
@@ -263,7 +287,8 @@ func daemonReachedTerminalState(status func() (ipc.Response, error)) (bool, erro
 		if lastError == "" {
 			lastError = "daemon entered error state"
 		}
-		return true, fmt.Errorf("%s; run `browseros-dogfood logs tail` for details", lastError)
+		targetFlag := targetFlagOrDefault(target)
+		return true, fmt.Errorf("%s; run `browseros-dogfood %s logs tail` for details", lastError, targetFlag)
 	default:
 		return false, nil
 	}
@@ -315,6 +340,8 @@ func formatRunLogEntry(entry runlog.Entry) string {
 	switch entry.Tag {
 	case "daemon":
 		style = warnStyle
+	case "agent":
+		style = proc.TagAgent.Color
 	case "browser":
 		style = proc.TagBrowser.Color
 	case "server":
@@ -345,6 +372,9 @@ func formatStatus(data any) string {
 		return string(raw) + "\n"
 	}
 	var out strings.Builder
+	if target, ok := stringValue(status["target"]); ok && target != "" {
+		fmt.Fprintf(&out, "%s %s\n", labelStyle.Sprint("Target:"), target)
+	}
 	writeStringField(&out, "State", status["state"])
 	writeNumberField(&out, "PID", status["pid"])
 	writeStringField(&out, "Uptime", status["uptime"])
@@ -355,18 +385,37 @@ func formatStatus(data any) string {
 		fmt.Fprintf(&out, "%s %s\n", warnStyle.Sprint("Last error:"), lastError)
 	}
 	if ports, ok := status["ports"].(map[string]any); ok {
-		fmt.Fprintf(
-			&out,
-			"%s CDP=%d Server=%d Extension=%d\n",
-			labelStyle.Sprint("Ports:"),
-			intValue(ports["CDP"]),
-			intValue(ports["Server"]),
-			intValue(ports["Extension"]),
-		)
+		target, _ := stringValue(status["target"])
+		if target == string(config.TargetClaw) {
+			fmt.Fprintf(&out, "%s CDP=%d API=%d\n", labelStyle.Sprint("Ports:"), intValue(ports["CDP"]), intValue(ports["Server"]))
+		} else {
+			fmt.Fprintf(
+				&out,
+				"%s CDP=%d Server=%d Extension=%d\n",
+				labelStyle.Sprint("Ports:"),
+				intValue(ports["CDP"]),
+				intValue(ports["Server"]),
+				intValue(ports["Extension"]),
+			)
+		}
 	}
-	writeStringField(&out, "BrowserOS dir", status["browseros_dir"])
+	target, _ := stringValue(status["target"])
+	if target == string(config.TargetClaw) {
+		writeStringField(&out, "Claw state", firstStatusValue(status["state_dir"], status["browseros_dir"]))
+	} else {
+		writeStringField(&out, "BrowserOS dir", status["browseros_dir"])
+	}
 	writeStringField(&out, "Logs", status["log_path"])
 	return out.String()
+}
+
+func firstStatusValue(values ...any) any {
+	for _, value := range values {
+		if s, ok := stringValue(value); ok && s != "" {
+			return s
+		}
+	}
+	return nil
 }
 
 func writeStringField(out *strings.Builder, label string, value any) {
