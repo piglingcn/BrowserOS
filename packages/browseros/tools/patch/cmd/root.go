@@ -111,7 +111,11 @@ Pass a checkout name to run from anywhere, for example "browseros-patch diff ch1
 		}
 		var err error
 		appState, err = app.Load(jsonOut, verbose, "")
-		return err
+		if err != nil {
+			return err
+		}
+		warnIfPatchesRepoDrift(cmd)
+		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if llmTxt {
