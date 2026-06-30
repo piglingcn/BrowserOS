@@ -1,5 +1,5 @@
 diff --git a/chrome/browser/ui/extensions/settings_overridden_params_providers.cc b/chrome/browser/ui/extensions/settings_overridden_params_providers.cc
-index 77281f600f64d..ef60366c81f3a 100644
+index 77281f600f64d..87dc12de08d9e 100644
 --- a/chrome/browser/ui/extensions/settings_overridden_params_providers.cc
 +++ b/chrome/browser/ui/extensions/settings_overridden_params_providers.cc
 @@ -11,6 +11,7 @@
@@ -22,9 +22,9 @@ index 77281f600f64d..ef60366c81f3a 100644
      return std::nullopt;
    }
  
-+  // Don't show the dialog for BrowserOS extensions
-+  if (browseros::IsBrowserOSExtension(extension->id())) {
-+    LOG(INFO) << "browseros: Skipping settings override dialog for BrowserOS extension "
++  if (browseros::IsActiveBrowserOSExtension(extension->id())) {
++    LOG(INFO) << "browseros: Skipping settings override dialog for BrowserOS "
++                 "extension "
 +              << extension->id();
 +    return std::nullopt;
 +  }

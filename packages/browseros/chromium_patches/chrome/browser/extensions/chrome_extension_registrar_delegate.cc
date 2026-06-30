@@ -1,5 +1,5 @@
 diff --git a/chrome/browser/extensions/chrome_extension_registrar_delegate.cc b/chrome/browser/extensions/chrome_extension_registrar_delegate.cc
-index 7d18f147508d6..3dd559e1c3877 100644
+index 7d18f147508d6..26ae243f550f4 100644
 --- a/chrome/browser/extensions/chrome_extension_registrar_delegate.cc
 +++ b/chrome/browser/extensions/chrome_extension_registrar_delegate.cc
 @@ -12,6 +12,7 @@
@@ -18,7 +18,7 @@ index 7d18f147508d6..3dd559e1c3877 100644
 +  // Preserve chrome.storage.local data for BrowserOS extensions. These may be
 +  // transiently uninstalled during update cycles (e.g., when both bundled CRX
 +  // and remote config fail on startup). User configuration must survive.
-+  if (browseros::IsBrowserOSExtension(extension->id())) {
++  if (browseros::IsKnownBrowserOSExtension(extension->id())) {
 +    LOG(INFO) << "browseros: Preserving storage for extension "
 +              << extension->id();
 +    subtask_done_callback.Run();
@@ -34,7 +34,7 @@ index 7d18f147508d6..3dd559e1c3877 100644
    }
  
 +  // - BrowserOS extensions cannot be disabled by users
-+  if (browseros::IsBrowserOSExtension(extension->id())) {
++  if (browseros::IsActiveBrowserOSExtension(extension->id())) {
 +    LOG(INFO) << "browseros: Extension " << extension->id()
 +              << " cannot be disabled (BrowserOS extension)";
 +    return false;

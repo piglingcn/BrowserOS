@@ -1,9 +1,9 @@
 diff --git a/chrome/browser/browseros/extensions/browseros_extension_installer.cc b/chrome/browser/browseros/extensions/browseros_extension_installer.cc
 new file mode 100644
-index 0000000000000..54dbe08156bb6
+index 0000000000000..8b976ef54e385
 --- /dev/null
 +++ b/chrome/browser/browseros/extensions/browseros_extension_installer.cc
-@@ -0,0 +1,313 @@
+@@ -0,0 +1,310 @@
 +// Copyright 2024 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -61,7 +61,7 @@ index 0000000000000..54dbe08156bb6
 +
 +BrowserOSExtensionInstaller::BrowserOSExtensionInstaller(Profile* profile)
 +    : profile_(profile) {
-+  for (const std::string& id : GetBrowserOSExtensionIds()) {
++  for (const std::string& id : GetActiveBrowserOSExtensionIds()) {
 +    extension_ids_.insert(id);
 +  }
 +}
@@ -135,9 +135,8 @@ index 0000000000000..54dbe08156bb6
 +      continue;
 +    }
 +
-+    // Only install registered BrowserOS extensions
-+    if (!IsBrowserOSExtension(extension_id)) {
-+      LOG(WARNING) << "browseros: Skipping unregistered extension "
++    if (!IsActiveBrowserOSExtension(extension_id)) {
++      LOG(WARNING) << "browseros: Skipping inactive or unregistered extension "
 +                   << extension_id;
 +      continue;
 +    }
@@ -249,9 +248,8 @@ index 0000000000000..54dbe08156bb6
 +      continue;
 +    }
 +
-+    // Only install registered BrowserOS extensions
-+    if (!IsBrowserOSExtension(extension_id)) {
-+      LOG(WARNING) << "browseros: Skipping unregistered extension "
++    if (!IsActiveBrowserOSExtension(extension_id)) {
++      LOG(WARNING) << "browseros: Skipping inactive or unregistered extension "
 +                   << extension_id;
 +      continue;
 +    }
@@ -299,8 +297,7 @@ index 0000000000000..54dbe08156bb6
 +    return base::DictValue();
 +  }
 +
-+  const base::DictValue* extensions =
-+      parsed->GetDict().FindDict("extensions");
++  const base::DictValue* extensions = parsed->GetDict().FindDict("extensions");
 +
 +  if (!extensions) {
 +    LOG(ERROR) << "browseros: No 'extensions' key in config";

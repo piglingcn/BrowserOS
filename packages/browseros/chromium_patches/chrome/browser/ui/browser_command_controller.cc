@@ -1,5 +1,5 @@
 diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
-index 738696abf04fa..aa1a1a1ce6a85 100644
+index 738696abf04fa..ec170ce291d37 100644
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
 @@ -7,7 +7,9 @@
@@ -12,12 +12,11 @@ index 738696abf04fa..aa1a1a1ce6a85 100644
  
  #include "base/check_deref.h"
  #include "base/command_line.h"
-@@ -23,11 +25,14 @@
- #include "build/build_config.h"
+@@ -24,10 +26,13 @@
  #include "chrome/app/chrome_command_ids.h"
  #include "chrome/browser/actor/ui/actor_overlay_web_view.h"
-+#include "chrome/browser/browseros/core/browseros_constants.h"
  #include "chrome/browser/browser_process.h"
++#include "chrome/browser/browseros/core/browseros_constants.h"
  #include "chrome/browser/browsing_data/browsing_data_important_sites_util.h"
  #include "chrome/browser/defaults.h"
  #include "chrome/browser/devtools/devtools_window.h"
@@ -43,15 +42,15 @@ index 738696abf04fa..aa1a1a1ce6a85 100644
  #include "chrome/browser/ui/web_applications/app_browser_controller.h"
  #include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
  #include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
-@@ -120,6 +127,7 @@
- #include "content/public/browser/web_contents_observer.h"
- #include "content/public/common/profiling.h"
- #include "content/public/common/url_constants.h"
+@@ -101,6 +108,7 @@
+ #include "chrome/common/webui_url_constants.h"
+ #include "components/bookmarks/common/bookmark_pref_names.h"
+ #include "components/dom_distiller/core/dom_distiller_features.h"
 +#include "components/infobars/content/content_infobar_manager.h"
- #include "extensions/browser/extension_registrar.h"
- #include "extensions/browser/extension_registry.h"
- #include "extensions/common/extension_urls.h"
-@@ -1089,6 +1097,60 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
+ #include "components/input/native_web_keyboard_event.h"
+ #include "components/lens/buildflags.h"
+ #include "components/password_manager/core/browser/manage_passwords_referrer.h"
+@@ -1089,6 +1097,65 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
        browser_->GetFeatures().side_panel_ui()->Show(
            SidePanelEntryId::kBookmarks, SidePanelOpenTrigger::kAppMenu);
        break;
@@ -72,6 +71,10 @@ index 738696abf04fa..aa1a1a1ce6a85 100644
 +      }
 +      break;
 +    case IDC_TOGGLE_BROWSEROS_AGENT: {
++      if (!browseros::IsActiveBrowserOSExtension(
++              browseros::kAgentExtensionId)) {
++        break;
++      }
 +      content::WebContents* active_contents =
 +          browser_->tab_strip_model()->GetActiveWebContents();
 +      if (!active_contents) {
@@ -92,7 +95,8 @@ index 738696abf04fa..aa1a1a1ce6a85 100644
 +              infobars::InfoBarDelegate::
 +                  BROWSEROS_AGENT_INSTALLING_INFOBAR_DELEGATE,
 +              nullptr,
-+              u"BrowserOS Agent is installing/updating. Please try again shortly.",
++              u"BrowserOS Agent is installing/updating. Please try again "
++              u"shortly.",
 +              /*auto_expire=*/true,
 +              /*should_animate=*/true,
 +              /*closeable=*/true);
@@ -112,15 +116,19 @@ index 738696abf04fa..aa1a1a1ce6a85 100644
      case IDC_SHOW_APP_MENU:
        base::RecordAction(base::UserMetricsAction("Accel_Show_App_Menu"));
        ShowAppMenu(browser_);
-@@ -1802,6 +1864,11 @@ void BrowserCommandController::InitCommandState() {
+@@ -1802,6 +1869,15 @@ void BrowserCommandController::InitCommandState() {
    }
  
    command_updater_.UpdateCommandEnabled(IDC_SHOW_BOOKMARK_SIDE_PANEL, true);
-+  command_updater_.UpdateCommandEnabled(IDC_SHOW_THIRD_PARTY_LLM_SIDE_PANEL,
-+                                        base::FeatureList::IsEnabled(features::kThirdPartyLlmPanel));
-+  command_updater_.UpdateCommandEnabled(IDC_CYCLE_THIRD_PARTY_LLM_PROVIDER,
-+                                        base::FeatureList::IsEnabled(features::kThirdPartyLlmPanel));
-+  command_updater_.UpdateCommandEnabled(IDC_TOGGLE_BROWSEROS_AGENT, true);
++  command_updater_.UpdateCommandEnabled(
++      IDC_SHOW_THIRD_PARTY_LLM_SIDE_PANEL,
++      base::FeatureList::IsEnabled(features::kThirdPartyLlmPanel));
++  command_updater_.UpdateCommandEnabled(
++      IDC_CYCLE_THIRD_PARTY_LLM_PROVIDER,
++      base::FeatureList::IsEnabled(features::kThirdPartyLlmPanel));
++  command_updater_.UpdateCommandEnabled(
++      IDC_TOGGLE_BROWSEROS_AGENT,
++      browseros::IsActiveBrowserOSExtension(browseros::kAgentExtensionId));
  
    if (browser_->is_type_normal()) {
      // Reading list commands.

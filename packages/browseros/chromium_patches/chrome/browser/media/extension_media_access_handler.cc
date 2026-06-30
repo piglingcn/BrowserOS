@@ -1,5 +1,5 @@
 diff --git a/chrome/browser/media/extension_media_access_handler.cc b/chrome/browser/media/extension_media_access_handler.cc
-index 779440e0a1944..ad54815fcc4c2 100644
+index 779440e0a1944..8e87bb0f6fa12 100644
 --- a/chrome/browser/media/extension_media_access_handler.cc
 +++ b/chrome/browser/media/extension_media_access_handler.cc
 @@ -6,6 +6,7 @@
@@ -18,23 +18,21 @@ index 779440e0a1944..ad54815fcc4c2 100644
  // Once http://crbug.com/40333126 is fixed, remove this allowlist.
  bool IsMediaRequestAllowedForExtension(const extensions::Extension* extension) {
    return extension->id() == extension_misc::kKeyboardExtensionId ||
-@@ -37,7 +39,9 @@ bool IsMediaRequestAllowedForExtension(const extensions::Extension* extension) {
+@@ -37,7 +39,8 @@ bool IsMediaRequestAllowedForExtension(const extensions::Extension* extension) {
           extension->id() == "nbpagnldghgfoolbancepceaanlmhfmd" ||
           extension->id() == "jkghodnilhceideoidjikpgommlajknk" ||
           extension->id() == "gjaehgfemfahhmlgpdfknkhdnemmolop" ||
 -         extension->id() == "egfdjlfmgnehecnclamagfafdccgfndp";
 +         extension->id() == "egfdjlfmgnehecnclamagfafdccgfndp" ||
-+         // BrowserOS extensions
-+         browseros::IsBrowserOSExtension(extension->id());
++         browseros::IsActiveBrowserOSExtension(extension->id());
  }
  
  }  // namespace
-@@ -90,6 +94,12 @@ void ExtensionMediaAccessHandler::HandleRequest(
+@@ -90,6 +93,11 @@ void ExtensionMediaAccessHandler::HandleRequest(
        GetDevicePolicy(profile, extension->url(), prefs::kVideoCaptureAllowed,
                        prefs::kVideoCaptureAllowedUrls) != ALWAYS_DENY;
  
-+  // For BrowserOS extensions in sidepanel, allow audio for teach mode
-+  if (browseros::IsBrowserOSExtension(extension->id())) {
++  if (browseros::IsActiveBrowserOSExtension(extension->id())) {
 +    audio_allowed = request.audio_type ==
 +                    blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE;
 +  }

@@ -1,5 +1,5 @@
 diff --git a/chrome/browser/extensions/extension_url_overrides_registrar.cc b/chrome/browser/extensions/extension_url_overrides_registrar.cc
-index 7762e0c775c22..8a486c6dd7a66 100644
+index 7762e0c775c22..ede0065069244 100644
 --- a/chrome/browser/extensions/extension_url_overrides_registrar.cc
 +++ b/chrome/browser/extensions/extension_url_overrides_registrar.cc
 @@ -7,6 +7,7 @@
@@ -10,11 +10,12 @@ index 7762e0c775c22..8a486c6dd7a66 100644
  #include "chrome/browser/extensions/extension_url_overrides.h"
  #include "chrome/browser/profiles/profile.h"
  #include "extensions/browser/extension_system.h"
-@@ -34,6 +35,10 @@ void ExtensionUrlOverridesRegistrar::OnExtensionLoaded(
+@@ -34,6 +35,11 @@ void ExtensionUrlOverridesRegistrar::OnExtensionLoaded(
      const Extension* extension) {
    const URLOverrides::URLOverrideMap& overrides =
        URLOverrides::GetChromeURLOverrides(extension);
-+  if (!overrides.empty() && !browseros::IsBrowserOSExtension(extension->id())) {
++  if (!overrides.empty() &&
++      !browseros::IsActiveBrowserOSExtension(extension->id())) {
 +    return;
 +  }
 +

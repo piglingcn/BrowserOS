@@ -1,9 +1,9 @@
 diff --git a/chrome/browser/browseros/extensions/browseros_extension_loader.cc b/chrome/browser/browseros/extensions/browseros_extension_loader.cc
 new file mode 100644
-index 0000000000000..70ad8710a39b7
+index 0000000000000..936c8d7cf7948
 --- /dev/null
 +++ b/chrome/browser/browseros/extensions/browseros_extension_loader.cc
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,267 @@
 +// Copyright 2024 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -18,11 +18,11 @@ index 0000000000000..70ad8710a39b7
 +#include "base/version.h"
 +#include "chrome/browser/browser_features.h"
 +#include "chrome/browser/browseros/core/browseros_constants.h"
-+#include "extensions/browser/crx_installer.h"
 +#include "chrome/browser/extensions/external_provider_impl.h"
 +#include "chrome/browser/extensions/updater/extension_updater.h"
 +#include "chrome/browser/profiles/profile.h"
 +#include "extensions/browser/crx_file_info.h"
++#include "extensions/browser/crx_installer.h"
 +#include "extensions/browser/extension_registry.h"
 +#include "extensions/browser/pending_extension_manager.h"
 +#include "extensions/common/extension.h"
@@ -44,7 +44,7 @@ index 0000000000000..70ad8710a39b7
 +               ? kBrowserOSAlphaConfigUrl
 +               : kBrowserOSConfigUrl);
 +
-+  for (const std::string& id : GetBrowserOSExtensionIds()) {
++  for (const std::string& id : GetActiveBrowserOSExtensionIds()) {
 +    extension_ids_.insert(id);
 +  }
 +}
@@ -62,9 +62,8 @@ index 0000000000000..70ad8710a39b7
 +  maintainer_ = std::make_unique<BrowserOSExtensionMaintainer>(profile_);
 +
 +  installer_->StartInstallation(
-+      config_url_,
-+      base::BindOnce(&BrowserOSExtensionLoader::OnInstallComplete,
-+                     weak_ptr_factory_.GetWeakPtr()));
++      config_url_, base::BindOnce(&BrowserOSExtensionLoader::OnInstallComplete,
++                                  weak_ptr_factory_.GetWeakPtr()));
 +}
 +
 +void BrowserOSExtensionLoader::OnInstallComplete(InstallResult result) {
@@ -95,8 +94,8 @@ index 0000000000000..70ad8710a39b7
 +    LOG(WARNING) << "browseros: Install returned empty prefs, "
 +                 << "reconstructing from installed extensions";
 +    prefs_to_load = ReconstructPrefsFromInstalledExtensions();
-+    LOG(INFO) << "browseros: Reconstructed prefs for "
-+              << prefs_to_load.size() << " installed extensions";
++    LOG(INFO) << "browseros: Reconstructed prefs for " << prefs_to_load.size()
++              << " installed extensions";
 +  }
 +
 +  LoadFinished(std::move(prefs_to_load));
@@ -118,7 +117,7 @@ index 0000000000000..70ad8710a39b7
 +          ? kBrowserOSAlphaUpdateUrl
 +          : kBrowserOSUpdateUrl;
 +
-+  for (const std::string& id : GetBrowserOSExtensionIds()) {
++  for (const std::string& id : GetActiveBrowserOSExtensionIds()) {
 +    const extensions::Extension* ext = registry->GetInstalledExtension(id);
 +    if (!ext) {
 +      continue;
@@ -129,8 +128,8 @@ index 0000000000000..70ad8710a39b7
 +                 update_url);
 +    prefs.Set(id, std::move(ext_pref));
 +
-+    LOG(INFO) << "browseros: Reconstructed pref for installed extension "
-+              << id << " v" << ext->version().GetString();
++    LOG(INFO) << "browseros: Reconstructed pref for installed extension " << id
++              << " v" << ext->version().GetString();
 +  }
 +
 +  return prefs;
@@ -147,9 +146,8 @@ index 0000000000000..70ad8710a39b7
 +  if (from_bundled) {
 +    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
 +        FROM_HERE,
-+        base::BindOnce(
-+            &BrowserOSExtensionLoader::InstallBundledExtensionsNow,
-+            weak_ptr_factory_.GetWeakPtr()),
++        base::BindOnce(&BrowserOSExtensionLoader::InstallBundledExtensionsNow,
++                       weak_ptr_factory_.GetWeakPtr()),
 +        kImmediateInstallDelay);
 +  } else {
 +    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
@@ -213,7 +211,7 @@ index 0000000000000..70ad8710a39b7
 +  if (updater) {
 +    extensions::ExtensionUpdater::CheckParams params;
 +    params.ids = std::list<extensions::ExtensionId>(extension_ids_.begin(),
-+                                                     extension_ids_.end());
++                                                    extension_ids_.end());
 +    params.install_immediately = true;
 +    params.fetch_priority = extensions::DownloadFetchPriority::kForeground;
 +    updater->InstallPendingNow(std::move(params));
@@ -266,8 +264,8 @@ index 0000000000000..70ad8710a39b7
 +    installer->set_creation_flags(
 +        extensions::Extension::WAS_INSTALLED_BY_DEFAULT);
 +
-+    extensions::CRXFileInfo file_info(
-+        crx_path, extensions::GetExternalVerifierFormat());
++    extensions::CRXFileInfo file_info(crx_path,
++                                      extensions::GetExternalVerifierFormat());
 +    installer->InstallCrxFile(file_info);
 +  }
 +}
