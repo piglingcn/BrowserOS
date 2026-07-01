@@ -461,7 +461,7 @@ features:
       - chrome/browser/ui/webui/new_tab_footer/
       - chrome/browser/ui/webui/side_panel/customize_chrome/customize_toolbar/customize_toolbar_handler_unittest.cc
       - components/bookmarks/browser/bookmark_utils.cc
-      - components/content_settings/core/browser/cookie_settings.cc
+      - components/content_settings/core/browser/cookie_settings_unittest.cc
       - components/payments/core/payment_prefs.cc
       - components/performance_manager/user_tuning/prefs.cc
       - components/search/ntp_features.cc
