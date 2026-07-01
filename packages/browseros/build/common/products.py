@@ -3,7 +3,6 @@
 
 from dataclasses import dataclass
 
-
 BROWSEROS_AGENT_EXTENSION_ID = "bflpfmnmnokmjhmgnolecpppdbdophmk"
 BROWSEROS_BUG_REPORTER_EXTENSION_ID = "adlpneommgkgeanpaekgoaolcpncohkf"
 BROWSERCLAW_EXTENSION_ID = "pjimfkbpehlcllblajnpfamdfjhhlgkc"
@@ -128,9 +127,11 @@ BROWSEROS_PRODUCT = ProductDescriptor(
     summary="The open source agentic browser",
     description="BrowserOS is a privacy-focused web browser built on Chromium.",
     string_replacements=_replacements("BrowserOS"),
+    # TODO: nikhil - remove packaging all extensions after chromium fix
     required_extension_ids=(
         (BROWSEROS_BUG_REPORTER_EXTENSION_ID, "BrowserOS bug reporter"),
         (BROWSEROS_AGENT_EXTENSION_ID, "BrowserOS agent"),
+        (BROWSERCLAW_EXTENSION_ID, "BrowserClaw app"),
     ),
     server_bundle_ids=("browseros-server",),
     mac=MacProductIdentity(
@@ -177,7 +178,12 @@ BROWSERCLAW_PRODUCT = ProductDescriptor(
     summary="The open source browser for web agents",
     description="BrowserClaw is a Chromium-based browser for agent workflows.",
     string_replacements=_replacements("BrowserClaw"),
-    required_extension_ids=((BROWSERCLAW_EXTENSION_ID, "BrowserClaw app"),),
+    # TODO: nikhil - remove packaging all extensions after chromium fix
+    required_extension_ids=(
+        (BROWSEROS_BUG_REPORTER_EXTENSION_ID, "BrowserOS bug reporter"),
+        (BROWSEROS_AGENT_EXTENSION_ID, "BrowserOS agent"),
+        (BROWSERCLAW_EXTENSION_ID, "BrowserClaw app"),
+    ),
     server_bundle_ids=("browserclaw-server",),
     mac=MacProductIdentity(
         bundle_id="com.browseros.BrowserClaw",
@@ -218,7 +224,9 @@ def get_product_descriptor(product_id: str | None) -> ProductDescriptor:
         return PRODUCTS[resolved_id]
     except KeyError as exc:
         valid = ", ".join(sorted(PRODUCTS))
-        raise ValueError(f"Unknown build.product '{resolved_id}'. Valid: {valid}") from exc
+        raise ValueError(
+            f"Unknown build.product '{resolved_id}'. Valid: {valid}"
+        ) from exc
 
 
 def default_product_descriptor() -> ProductDescriptor:
