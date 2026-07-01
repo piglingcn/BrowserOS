@@ -142,7 +142,9 @@ GRAPHQL_SCHEMA_PATH=/path/to/api-repo/.../schema.graphql
 
 ## Release Flow
 
-Extension releases use annotated component tags. First bump `packages/browseros-agent/apps/app/package.json` in a PR, merge that version commit to the default branch, then tag the merged commit:
+Extension releases use annotated component tags. For the usual path, run the `Release BrowserOS Extension` workflow manually with the target version, for example `0.0.119`. The workflow bumps `packages/browseros-agent/apps/app/package.json`, updates the matching `bun.lock` workspace entry, commits that bump to the default branch, creates `agent-extension/vX.Y.Z`, and publishes the GitHub Release.
+
+To release from an existing version commit instead, tag the merged default-branch commit manually:
 
 ```bash
 git tag -a agent-extension/v0.0.100 -m "agent-extension v0.0.100"

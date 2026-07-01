@@ -6,8 +6,8 @@ on:
       - "agent-extension/v*"
   workflow_dispatch:
     inputs:
-      tag:
-        description: Existing release tag to publish, e.g. agent-extension/v0.0.100
+      version:
+        description: "Release version, e.g. 0.0.119"
         required: true
         type: string
 
@@ -17,7 +17,9 @@ concurrency:
 
 jobs:
   release:
+    if: github.event_name != 'push' || github.event.deleted != true
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
@@ -31,148 +33,21 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.repository.default_branch || 'main' }}
 
-      - name: Resolve release metadata
+      - name: Resolve release
         id: release
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          PACKAGE_JSON="packages/browseros-agent/apps/app/package.json"
-          NEW_PREFIX="agent-extension/v"
-          LEGACY_PREFIX="agent-extension-v"
-
-          is_semver() {
-            [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          }
-
-          emit() {
-            printf '%s=%s\n' "$1" "$2"
-            printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
-          }
-
-          git fetch origin "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" --no-tags
-          git fetch origin --tags --prune
-
-          VERSION="${RELEASE_TAG#"$NEW_PREFIX"}"
-          if [ "$RELEASE_TAG" = "$VERSION" ] || ! is_semver "$VERSION"; then
-            echo "::error::Expected extension release tag like ${NEW_PREFIX}X.Y.Z, got: $RELEASE_TAG"
-            exit 1
-          fi
-
-          TAG_TYPE="$(git cat-file -t "refs/tags/$RELEASE_TAG" 2>/dev/null || true)"
-          if [ -z "$TAG_TYPE" ]; then
-            echo "::error::Tag does not exist: $RELEASE_TAG"
-            exit 1
-          fi
-          if [ "$TAG_TYPE" != "tag" ]; then
-            echo "::error::Tag $RELEASE_TAG must be an annotated tag."
-            exit 1
-          fi
-
-          RELEASE_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
-          if ! PACKAGE_VERSION="$(
-            git show "$RELEASE_SHA:$PACKAGE_JSON" | python3 -c '
-          import json
-          import sys
-
-          print(json.load(sys.stdin)["version"])
-          '
-          )"; then
-            echo "::error::Could not read $PACKAGE_JSON version from $RELEASE_TAG ($RELEASE_SHA)"
-            exit 1
-          fi
-
-          if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
-            echo "::error::$PACKAGE_JSON at $RELEASE_TAG is $PACKAGE_VERSION, expected $VERSION. Bump package.json before tagging."
-            exit 1
-          fi
-
-          if ! git merge-base --is-ancestor "$RELEASE_SHA" "origin/$DEFAULT_BRANCH"; then
-            echo "::error::Tagged commit $RELEASE_SHA is not reachable from origin/$DEFAULT_BRANCH."
-            exit 1
-          fi
-
-          PREVIOUS_RESULT="$(
-            python3 - "$VERSION" "$RELEASE_TAG" "$NEW_PREFIX" "$LEGACY_PREFIX" <<'PY'
-          import re
-          import subprocess
-          import sys
-
-          target = tuple(int(part) for part in sys.argv[1].split("."))
-          target_tag = sys.argv[2]
-          prefixes = sys.argv[3:]
-          latest = None
-          duplicate = None
-
-          for tag in subprocess.check_output(["git", "tag", "-l"], text=True).splitlines():
-              if tag == target_tag:
-                  continue
-
-              for prefix in prefixes:
-                  if not tag.startswith(prefix):
-                      continue
-                  version = tag[len(prefix):]
-                  if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version):
-                      continue
-                  parsed = tuple(int(part) for part in version.split("."))
-                  if parsed == target:
-                      duplicate = tag
-                  if latest is None or parsed > latest[0]:
-                      latest = (parsed, tag)
-
-          if duplicate:
-              print(f"duplicate={duplicate}")
-          elif latest and target <= latest[0]:
-              print(f"non_incrementing={'.'.join(str(part) for part in latest[0])}:{latest[1]}")
-          elif latest:
-              print(f"previous={latest[1]}")
-          PY
-          )"
-
-          PREVIOUS_TAG=""
-          case "$PREVIOUS_RESULT" in
-            duplicate=*)
-              DUPLICATE_TAG="${PREVIOUS_RESULT#duplicate=}"
-              echo "::error::Release version $VERSION already exists as tag $DUPLICATE_TAG."
-              exit 1
-              ;;
-            non_incrementing=*)
-              LATEST="${PREVIOUS_RESULT#non_incrementing=}"
-              LATEST_VERSION="${LATEST%%:*}"
-              LATEST_TAG="${LATEST#*:}"
-              echo "::error::Release version $VERSION must be greater than latest existing extension version $LATEST_VERSION ($LATEST_TAG)."
-              exit 1
-              ;;
-            previous=*)
-              PREVIOUS_TAG="${PREVIOUS_RESULT#previous=}"
-              ;;
-            "")
-              ;;
-            *)
-              echo "::error::Unexpected previous tag resolver output: $PREVIOUS_RESULT"
-              exit 1
-              ;;
-          esac
-
-          emit version "$VERSION"
-          emit tag "$RELEASE_TAG"
-          emit release_sha "$RELEASE_SHA"
-          emit previous_tag "$PREVIOUS_TAG"
-
-          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          Extension release:
-          - Version: ${VERSION}
-          - Tag: ${RELEASE_TAG}
-          - Release commit: ${RELEASE_SHA}
-          - Package path: ${PACKAGE_JSON}
-
-          Maintainer release flow:
-          1. Bump packages/browseros-agent/apps/app/package.json in a PR and merge it.
-          2. git tag -a agent-extension/v${VERSION} -m "agent-extension v${VERSION}"
-          3. git push origin agent-extension/v${VERSION}
-          EOF
-        working-directory: packages/browseros-agent
+          packages/browseros-agent/scripts/release/prepare-extension-release.sh \
+            --event-name "$EVENT_NAME" \
+            --default-branch "$DEFAULT_BRANCH" \
+            --ref-name "$REF_NAME" \
+            --requested-version "$REQUESTED_VERSION"
+        working-directory: ${{ github.workspace }}
 
       - name: Checkout release commit
         run: git checkout --detach "${{ steps.release.outputs.release_sha }}"
