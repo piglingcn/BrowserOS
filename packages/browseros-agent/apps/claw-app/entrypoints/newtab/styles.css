@@ -16,66 +16,72 @@
  *
  * `accent` deliberately equals `primary`: the app uses accent as the vivid
  * brand color (pulse dots, emphasis text, gradients), not as shadcn's pale
- * hover tint — ease-health's #b6ced5 accent only lingers in the inert
- * shadcn variable blocks at the end of this file (no utility reads them).
+ * hover tint.
+ *
+ * Every color maps through a var() so the `.dark` block can flip the whole
+ * palette by re-declaring the plain variables; the concrete light values
+ * live in :root and the dark values in .dark.
  */
 @theme inline {
   /* shadcn primitives: re-pointed to ease-health surfaces */
-  --color-background: #fffefc;
-  --color-foreground: #000000;
-  --color-card: #fffefc;
-  --color-card-foreground: #000000;
-  --color-popover: #fffefc;
-  --color-popover-foreground: #000000;
-  --color-primary: #0f3e17;
-  --color-primary-foreground: #fffefc;
-  --color-secondary: #cfe7d3;
-  --color-secondary-foreground: #0f3e17;
-  --color-muted: #e1f4df;
-  --color-muted-foreground: #333333;
-  --color-accent: #0f3e17;
-  --color-accent-foreground: #fffefc;
-  --color-destructive: #b7301b;
-  --color-destructive-foreground: #fffefc;
-  --color-border: #e5e7eb;
-  --color-input: #e5e7eb;
-  --color-ring: #0f3e17;
-  --color-sidebar: #f2f8f0;
-  --color-sidebar-foreground: #000000;
-  --color-sidebar-accent: #cfe7d3;
-  --color-sidebar-accent-foreground: #0f3e17;
-  --color-sidebar-border: #e5e7eb;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
 
   /* BrowserOS bespoke surfaces. ink-deep is the shared dark-chrome
      surface (terminal blocks, caption strips, viewport pills) so all
-     dark strips read as one ease-health green-black, not mixed blacks. */
-  --color-bg-canvas: #fbfdf8;
-  --color-bg-sunken: #ebf3ea;
-  --color-card-tint: #fcfefb;
-  --color-ink-deep: #0a1810;
-  --color-border-2: #dbe3dc;
-  --color-border-strong: #c6d1c8;
+     dark strips read as one ease-health green-black, not mixed blacks.
+     Unlike --ink (which flips to light for text), it stays a dark chip
+     in both themes — elevated in dark so it reads as raised, not lost
+     against the dark page. Carries hardcoded white text. */
+  --color-bg-canvas: var(--bg-canvas);
+  --color-bg-sunken: var(--bg-sunken);
+  --color-card-tint: var(--card-tint);
+  --color-ink-deep: var(--ink-deep);
+  --color-border-2: var(--border-2);
+  --color-border-strong: var(--border-strong);
 
   /* Ink scale (typography hierarchy) */
-  --color-ink: #000000;
-  --color-ink-2: #333333;
-  --color-ink-3: #68706a;
-  --color-ink-4: #99a29b;
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
 
   /* Accent ink (high-contrast green text on tinted backgrounds) */
-  --color-accent-2: #2d7a3a;
-  --color-accent-ink: #0f3e17;
-  --color-accent-tint: #e1f4df;
-  --color-accent-tint-2: #cfe7d3;
+  --color-accent-2: var(--accent-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-tint-2: var(--accent-tint-2);
 
   /* Status palette */
-  --color-green: #2d7a3a;
-  --color-green-tint: #d9edda;
-  --color-amber: hsl(35 80% 40%);
-  --color-amber-tint: hsl(40 75% 92%);
-  --color-red: #b7301b;
-  --color-red-tint: hsl(4 65% 95%);
-  --color-blue: #3e7285;
+  --color-green: var(--green);
+  --color-green-tint: var(--green-tint);
+  --color-amber: var(--amber);
+  --color-amber-tint: var(--amber-tint);
+  --color-red: var(--red);
+  --color-red-tint: var(--red-tint);
+  --color-blue: var(--blue);
 
   /* Type families. Variable fonts get the "Variable" suffix; Newsreader is
      not currently variable so it ships as a plain family. */
@@ -181,6 +187,23 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Same three layers, flipped to deep green-black for dark mode. */
+.dark body {
+  background:
+    radial-gradient(
+      1200px 700px at 18% -8%,
+      hsl(140 20% 11%) 0%,
+      hsl(140 20% 11% / 0) 60%
+    ),
+    radial-gradient(
+      1000px 800px at 100% 110%,
+      hsl(196 22% 12%) 0%,
+      hsl(196 22% 12% / 0) 55%
+    ),
+    linear-gradient(155deg, hsl(150 22% 8%) 0%, hsl(140 18% 9%) 100%);
+  background-attachment: fixed;
+}
+
 /* Selection: tint with the accent so it reads as BrowserOS, not chrome blue.
    Foreground is pinned to ink so light-on-dark surfaces (the MCP URL block,
    for example) stay readable when selected. */
@@ -223,9 +246,10 @@ body {
   --secondary-foreground: #0f3e17;
   --muted: #e1f4df;
   --muted-foreground: #333333;
-  --accent: #b6ced5;
-  --accent-foreground: #0f3e17;
+  --accent: #0f3e17;
+  --accent-foreground: #fffefc;
   --destructive: #b7301b;
+  --destructive-foreground: #fffefc;
   --border: #e5e7eb;
   --input: #e5e7eb;
   --ring: #0f3e17;
@@ -235,18 +259,45 @@ body {
   --chart-4: #b1dbb8;
   --chart-5: #333333;
   --radius: 0.45rem;
-  --sidebar: #fffefc;
+  --sidebar: #f2f8f0;
   --sidebar-foreground: #000000;
   --sidebar-primary: #0f3e17;
   --sidebar-primary-foreground: #fffefc;
-  --sidebar-accent: #e1f4df;
+  --sidebar-accent: #cfe7d3;
   --sidebar-accent-foreground: #0f3e17;
   --sidebar-border: #e5e7eb;
   --sidebar-ring: #0f3e17;
+
+  --bg-canvas: #fbfdf8;
+  --bg-sunken: #ebf3ea;
+  --card-tint: #fcfefb;
+  --ink-deep: #0a1810;
+  --border-2: #dbe3dc;
+  --border-strong: #c6d1c8;
+  --ink: #000000;
+  --ink-2: #333333;
+  --ink-3: #68706a;
+  --ink-4: #99a29b;
+  --accent-2: #2d7a3a;
+  --accent-ink: #0f3e17;
+  --accent-tint: #e1f4df;
+  --accent-tint-2: #cfe7d3;
+  --green: #2d7a3a;
+  --green-tint: #d9edda;
+  --amber: hsl(35 80% 40%);
+  --amber-tint: hsl(40 75% 92%);
+  --red: #b7301b;
+  --red-tint: hsl(4 65% 95%);
+  --blue: #3e7285;
 }
 /*
  ---break---
  */
+
+/* Dark counterpart on the ease-health green axes: deep green-black
+   surfaces, the brand green kept vivid so `text-accent`, pulse dots and
+   dropdown highlights stay legible on dark. Tints flip from "mint wash
+   on cream" to "deep green on green-black"; the ink scale inverts. */
 .dark {
   --background: #0a1810;
   --foreground: #fffefc;
@@ -260,9 +311,10 @@ body {
   --secondary-foreground: #fffefc;
   --muted: #1f3a26;
   --muted-foreground: #a8c4ab;
-  --accent: #1f3a26;
-  --accent-foreground: #fffefc;
+  --accent: #4a9c56;
+  --accent-foreground: #0a1810;
   --destructive: #e34432;
+  --destructive-foreground: #fffefc;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.12);
   --ring: #2d7a3a;
@@ -279,4 +331,26 @@ body {
   --sidebar-accent-foreground: #fffefc;
   --sidebar-border: rgba(255, 255, 255, 0.08);
   --sidebar-ring: #2d7a3a;
+
+  --bg-canvas: #07120c;
+  --bg-sunken: #0f2015;
+  --card-tint: #17301e;
+  --ink-deep: #1a3020;
+  --border-2: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --ink: #fffefc;
+  --ink-2: #cdddce;
+  --ink-3: #9fb5a3;
+  --ink-4: #748a78;
+  --accent-2: #5fb06c;
+  --accent-ink: #8fce9b;
+  --accent-tint: #1f3a26;
+  --accent-tint-2: #24462e;
+  --green: #4a9c56;
+  --green-tint: #16281b;
+  --amber: hsl(38 80% 58%);
+  --amber-tint: hsl(40 40% 14%);
+  --red: #e34432;
+  --red-tint: #2c1512;
+  --blue: #6ea8b8;
 }

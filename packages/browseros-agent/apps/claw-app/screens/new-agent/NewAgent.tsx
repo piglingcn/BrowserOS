@@ -209,7 +209,7 @@ function NumberedSection({ n, title, sub, children }: NumberedSectionProps) {
   return (
     <section>
       <header className="mb-3 flex items-center gap-2.5">
-        <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-ink font-bold text-[11.5px] text-card">
+        <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-ink-deep font-bold text-[11.5px] text-white">
           {n}
         </span>
         <div>
