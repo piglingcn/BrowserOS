@@ -115,15 +115,10 @@ features:
   win-sparkle-updater:
     description: "feat: win winsparkle updater"
     files:
-      - chrome/browser/BUILD.gn
-      - chrome/browser/buildflags.gni
       - chrome/browser/chrome_browser_main_win.cc
-      - chrome/browser/sparkle_buildflags.gni
-      - chrome/browser/ui/BUILD.gn
       - chrome/browser/ui/webui/help/version_updater_basic.cc
       - chrome/browser/ui/webui/help/winsparkle_version_updater_win.cc
       - chrome/browser/ui/webui/help/winsparkle_version_updater_win.h
-      - chrome/browser/upgrade_detector/upgrade_detector_impl.cc
       - chrome/browser/win/winsparkle_glue.cc
       - chrome/browser/win/winsparkle_glue.h
       - chrome/installer/mini_installer/BUILD.gn
@@ -275,9 +270,6 @@ features:
   onboarding-import:
     description: "feat: browseros onboarding import support"
     files:
-      - chrome/browser/browseros/BUILD.gn
-      - chrome/browser/browseros/core/browseros_prefs.cc
-      - chrome/browser/browseros/core/browseros_prefs.h
       - chrome/browser/browseros/onboarding/BUILD.gn
       - chrome/browser/browseros/onboarding/browseros_onboarding.cc
       - chrome/browser/browseros/onboarding/browseros_onboarding.h
@@ -287,15 +279,11 @@ features:
       - chrome/browser/browseros/onboarding/resources/app.css
       - chrome/browser/browseros/onboarding/resources/app.js
       - chrome/browser/browseros/onboarding/resources/index.html
-      - chrome/browser/chrome_browser_main.cc
-      - chrome/browser/ui/BUILD.gn
       - chrome/browser/ui/startup/startup_browser_creator.cc
       - chrome/browser/ui/views/profiles/first_run_flow_controller.cc
       - chrome/browser/ui/views/profiles/first_run_flow_controller.h
       - chrome/browser/ui/webui/BUILD.gn
-      - chrome/browser/ui/webui/chrome_web_ui_configs.cc
       - chrome/chrome_paks.gni
-      - chrome/common/webui_url_constants.cc
       - chrome/common/webui_url_constants.h
       - tools/gritsettings/resource_ids.spec
 
@@ -485,7 +473,6 @@ features:
     files:
       - chrome/browser/ui/profiles/profile_error_dialog.cc
       - chrome/browser/ui/startup/infobar_utils.cc
-      - chrome/installer/mini_installer/chrome.release
       - extensions/browser/process_manager.cc
       - extensions/browser/process_manager.h
       - third_party/blink/renderer/core/frame/navigator.cc

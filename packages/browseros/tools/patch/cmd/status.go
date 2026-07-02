@@ -63,9 +63,12 @@ func init() {
 				}
 				fmt.Printf("%s  %s\n", ui.Muted("path:"), ws.Path)
 				fmt.Printf("%s  %s\n", ui.Muted("repo head:"), status.RepoHead)
+				fmt.Printf("%s  %s\n", ui.Muted("patches rev:"), status.PatchesRev)
+				fmt.Printf("%s  %s\n", ui.Muted("patches freshness:"), status.PatchesFreshness)
 				fmt.Printf("%s  %s\n", ui.Muted("last sync:"), status.LastSyncRev)
 				fmt.Printf("%s  %s\n", ui.Muted("last apply:"), status.LastApplyRev)
 				fmt.Printf("%s  %s\n", ui.Muted("last extract:"), status.LastExtractRev)
+				fmt.Printf("%s  %s\n", ui.Muted("last refresh:"), status.LastRefreshRev)
 				fmt.Printf("%s  %d\n", ui.Muted("needs apply:"), len(status.NeedsApply))
 				fmt.Printf("%s  %d\n", ui.Muted("needs update:"), len(status.NeedsUpdate))
 				fmt.Printf("%s  %d\n", ui.Muted("orphaned:"), len(status.Orphaned))
@@ -93,14 +96,16 @@ func init() {
 // statusRow is the compact per-checkout shape used by status --all.
 // pending_stash carries the same string ref as the single-checkout status.
 type statusRow struct {
-	Workspace    string `json:"workspace"`
-	Path         string `json:"path"`
-	SyncState    string `json:"sync_state,omitempty"`
-	NeedsApply   int    `json:"needs_apply"`
-	NeedsUpdate  int    `json:"needs_update"`
-	Orphaned     int    `json:"orphaned"`
-	PendingStash string `json:"pending_stash,omitempty"`
-	Error        string `json:"error,omitempty"`
+	Workspace        string `json:"workspace"`
+	Path             string `json:"path"`
+	SyncState        string `json:"sync_state,omitempty"`
+	NeedsApply       int    `json:"needs_apply"`
+	NeedsUpdate      int    `json:"needs_update"`
+	Orphaned         int    `json:"orphaned"`
+	PatchesRev       string `json:"patches_rev,omitempty"`
+	PatchesFreshness string `json:"patches_freshness,omitempty"`
+	PendingStash     string `json:"pending_stash,omitempty"`
+	Error            string `json:"error,omitempty"`
 }
 
 func runStatusAll(cmd *cobra.Command) error {
@@ -126,16 +131,18 @@ func runStatusAll(cmd *cobra.Command) error {
 			row.NeedsApply = len(status.NeedsApply)
 			row.NeedsUpdate = len(status.NeedsUpdate)
 			row.Orphaned = len(status.Orphaned)
+			row.PatchesRev = status.PatchesRev
+			row.PatchesFreshness = status.PatchesFreshness
 			row.PendingStash = status.PendingStash
 		}
 		rows = append(rows, row)
 	}
 	return renderResult(rows, func() {
-		headers := []string{"NAME", "STATE", "APPLY", "UPDATE", "ORPHANED", "STASH"}
+		headers := []string{"NAME", "STATE", "PATCHES", "APPLY", "UPDATE", "ORPHANED", "STASH"}
 		tableRows := make([][]string, 0, len(rows))
 		for _, row := range rows {
 			if row.Error != "" {
-				tableRows = append(tableRows, []string{row.Workspace, "error: " + row.Error, "-", "-", "-", "-"})
+				tableRows = append(tableRows, []string{row.Workspace, "error: " + row.Error, "-", "-", "-", "-", "-"})
 				continue
 			}
 			stash := ""
@@ -145,6 +152,7 @@ func runStatusAll(cmd *cobra.Command) error {
 			tableRows = append(tableRows, []string{
 				row.Workspace,
 				row.SyncState,
+				row.PatchesFreshness,
 				strconv.Itoa(row.NeedsApply),
 				strconv.Itoa(row.NeedsUpdate),
 				strconv.Itoa(row.Orphaned),

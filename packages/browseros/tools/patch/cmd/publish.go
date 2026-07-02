@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/engine"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -24,11 +25,17 @@ func init() {
 			if len(args) == 1 {
 				remote = args[0]
 			}
-			result, err := engine.Publish(cmd.Context(), engine.PublishOptions{
-				Repo:     info,
-				Remote:   remote,
-				Message:  message,
-				Progress: commandProgress(cmd),
+			progress := commandProgress(cmd)
+			var result *engine.PublishResult
+			err = withPatchRepoLock(cmd, info, progress, func(lockedInfo *repo.Info) error {
+				var publishErr error
+				result, publishErr = engine.Publish(cmd.Context(), engine.PublishOptions{
+					Repo:     lockedInfo,
+					Remote:   remote,
+					Message:  message,
+					Progress: progress,
+				})
+				return publishErr
 			})
 			if err != nil {
 				return err

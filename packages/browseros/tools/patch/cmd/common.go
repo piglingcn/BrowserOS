@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/engine"
+	patchlock "github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/lock"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/ui"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/workspace"
@@ -54,6 +55,8 @@ Rules:
 - browseros-patch list reads only registered Chromium checkouts; it does not inspect sync state.
 - Use browseros-patch status ch1 or browseros-patch diff ch1 before mutating.
 - Mutating commands: browseros-patch sync ch1 (alias: pull), browseros-patch apply ch1, browseros-patch extract ch1, browseros-patch annotate ch1.
+- Pool commands: browseros-patch refresh ch1 rebuilds the local browseros branch as feature commits from canonical patches.
+- Feature registration commands: browseros-patch feature lint validates patch ownership; browseros-patch feature add registers a newly extracted task range.
 - Every command accepts --json for machine-readable output and never prompts.
 
 Exit codes:
@@ -66,6 +69,7 @@ Status fields (browseros-patch status ch1 --json):
 - needs_update: checkout changes missing from the patch repo -> run extract.
 - orphaned: checkout files not represented in the patch set (untracked junk is pre-filtered).
 - pending_stash: sync parked local changes in a stash and has not restored them yet.
+- patches_rev / patches_freshness: patch-stack revision materialized on browseros; fresh or behind N vs repo_head.
 
 Daily flow (pull latest patches, keep local work):
 1. browseros-patch sync ch1            # pull patch repo, apply, rebase local changes
@@ -78,7 +82,18 @@ Capture flow (turn checkout changes into patches):
 3. browseros-patch publish -m "chore: sync patches"   # commit + push chromium_patches
 
 Feature commit flow (turn checkout changes into feature commits):
-1. browseros-patch annotate ch1            # commit changed files for all build/features.yaml features
+1. browseros-patch annotate ch1            # commit changed files for all bos_build/features.yaml features
+
+Pool refresh flow (rebuild browseros branch before leasing a checkout):
+1. browseros-patch status ch1 --json       # check patches_freshness
+2. browseros-patch refresh ch1             # pull patch repo, rebuild browseros from BASE_COMMIT + features
+3. result "fresh" means the browseros tip already carries the current Patches-Rev trailer
+4. use --force only to abandon tracked state or a task/* lease; untracked files and out/ are left alone
+
+After extracting a task branch:
+1. browseros-patch extract ch1 --range browseros..task/my-feature --squash
+2. browseros-patch feature add my-feature ch1 --description "feat: my feature" --files-from-range browseros..task/my-feature
+3. browseros-patch feature lint
 
 Chromium upgrade loop (move patches to a new Chromium base):
 1. gclient sync the checkout to the new Chromium revision.
@@ -183,4 +198,14 @@ func commandProgress(cmd *cobra.Command) engine.Progress {
 	stderr := cmd.ErrOrStderr()
 	activeProgress = &cliProgress{w: stderr, tty: isTerminal(stderr)}
 	return activeProgress
+}
+
+func withPatchRepoLock(cmd *cobra.Command, info *repo.Info, progress engine.Progress, fn func(*repo.Info) error) error {
+	return patchlock.WithRepoLock(cmd.Context(), info.Root, progress, func() error {
+		lockedInfo, err := repo.Load(info.Root)
+		if err != nil {
+			return err
+		}
+		return fn(lockedInfo)
+	})
 }

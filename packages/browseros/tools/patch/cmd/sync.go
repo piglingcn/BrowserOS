@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/engine"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -32,12 +33,18 @@ func init() {
 			if err != nil {
 				return err
 			}
-			result, err := engine.Sync(cmd.Context(), engine.SyncOptions{
-				Workspace: ws,
-				Repo:      info,
-				Remote:    remote,
-				Rebase:    rebase && !noRebase,
-				Progress:  commandProgress(cmd),
+			progress := commandProgress(cmd)
+			var result *engine.SyncResult
+			err = withPatchRepoLock(cmd, info, progress, func(lockedInfo *repo.Info) error {
+				var syncErr error
+				result, syncErr = engine.Sync(cmd.Context(), engine.SyncOptions{
+					Workspace: ws,
+					Repo:      lockedInfo,
+					Remote:    remote,
+					Rebase:    rebase && !noRebase,
+					Progress:  progress,
+				})
+				return syncErr
 			})
 			if err != nil {
 				return err

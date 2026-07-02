@@ -350,8 +350,9 @@ func TestCheckoutCommandUsageTerminology(t *testing.T) {
 		{name: "status", use: "status [checkout]"},
 		{name: "apply", use: "apply [checkout] [-- files...]"},
 		{name: "sync", use: "sync [checkout]"},
-		{name: "extract", use: "extract [checkout] [--range <start> <end>] [-- files...]"},
+		{name: "extract", use: "extract [checkout] [--range <start>..<end>|<start> <end>] [-- files...]"},
 		{name: "annotate", use: "annotate [checkout]"},
+		{name: "refresh", use: "refresh [checkout]"},
 	} {
 		cmd, _, err := rootCmd.Find([]string{tc.name})
 		if err != nil {
@@ -384,7 +385,8 @@ func TestRootHelpExplainsPatchRepoAndCheckoutModel(t *testing.T) {
 		"browseros-patch diff ch1",
 		"browseros-patch sync ch1",
 		"browseros-patch extract ch1",
-		"browseros-patch annotate ch1",
+		"browseros-patch refresh ch1",
+		"browseros-patch feature lint",
 	} {
 		if !strings.Contains(rootCmd.Example, want) {
 			t.Fatalf("expected root examples to contain %q, got:\n%s", want, rootCmd.Example)
@@ -395,6 +397,22 @@ func TestRootHelpExplainsPatchRepoAndCheckoutModel(t *testing.T) {
 func TestRootExamplesDoNotRenderSourceTabs(t *testing.T) {
 	if strings.Contains(rootCmd.Example, "\n\t") {
 		t.Fatalf("root examples should render with spaces, got:\n%s", rootCmd.Example)
+	}
+}
+
+func TestParseRevRange(t *testing.T) {
+	start, end, err := parseRevRange("browseros..task/demo")
+	if err != nil {
+		t.Fatalf("parseRevRange: %v", err)
+	}
+	if start != "browseros" || end != "task/demo" {
+		t.Fatalf("range = %s..%s, want browseros..task/demo", start, end)
+	}
+	if _, _, err := parseRevRange("browseros"); err == nil {
+		t.Fatalf("expected invalid range error")
+	}
+	if _, _, err := parseRevRange("browseros...task/demo"); err == nil {
+		t.Fatalf("expected three-dot range error")
 	}
 }
 
@@ -409,6 +427,7 @@ func TestCheckoutCommandExamplesUseNamedCheckout(t *testing.T) {
 		{name: "sync", example: "browseros-patch sync ch1"},
 		{name: "extract", example: "browseros-patch extract ch1"},
 		{name: "annotate", example: "browseros-patch annotate ch1"},
+		{name: "refresh", example: "browseros-patch refresh ch1"},
 	} {
 		cmd, _, err := rootCmd.Find([]string{tc.name})
 		if err != nil {
@@ -424,7 +443,7 @@ func TestCheckoutCommandExamplesUseNamedCheckout(t *testing.T) {
 }
 
 func TestSrcFlagExplainsDirectCheckoutPath(t *testing.T) {
-	for _, name := range []string{"diff", "status", "apply", "sync", "extract", "annotate"} {
+	for _, name := range []string{"diff", "status", "apply", "sync", "extract", "annotate", "refresh"} {
 		cmd, _, err := rootCmd.Find([]string{name})
 		if err != nil {
 			t.Fatalf("find %s: %v", name, err)

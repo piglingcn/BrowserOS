@@ -98,7 +98,8 @@ Pass a checkout name to run from anywhere, for example "browseros-patch diff ch1
 		"  browseros-patch diff ch1\n" +
 		"  browseros-patch sync ch1\n" +
 		"  browseros-patch extract ch1\n" +
-		"  browseros-patch annotate ch1",
+		"  browseros-patch refresh ch1\n" +
+		"  browseros-patch feature lint",
 	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,

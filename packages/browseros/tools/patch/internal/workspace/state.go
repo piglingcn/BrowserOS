@@ -16,10 +16,12 @@ type State struct {
 	LastApplyRev   string    `yaml:"last_apply_rev,omitempty" json:"last_apply_rev,omitempty"`
 	LastSyncRev    string    `yaml:"last_sync_rev,omitempty" json:"last_sync_rev,omitempty"`
 	LastExtractRev string    `yaml:"last_extract_rev,omitempty" json:"last_extract_rev,omitempty"`
+	LastRefreshRev string    `yaml:"last_refresh_rev,omitempty" json:"last_refresh_rev,omitempty"`
 	PendingStash   string    `yaml:"pending_stash,omitempty" json:"pending_stash,omitempty"`
 	LastApplyAt    time.Time `yaml:"last_apply_at,omitempty" json:"last_apply_at,omitempty"`
 	LastSyncAt     time.Time `yaml:"last_sync_at,omitempty" json:"last_sync_at,omitempty"`
 	LastExtractAt  time.Time `yaml:"last_extract_at,omitempty" json:"last_extract_at,omitempty"`
+	LastRefreshAt  time.Time `yaml:"last_refresh_at,omitempty" json:"last_refresh_at,omitempty"`
 }
 
 func StateDir(workspacePath string) string {

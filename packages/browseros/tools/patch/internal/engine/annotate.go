@@ -2,10 +2,7 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/patch/internal/git"
@@ -44,22 +41,15 @@ type AnnotateSkippedFeature struct {
 	Reason      string `json:"reason"`
 }
 
-type annotateFeature struct {
-	Name        string
-	Description string
-	Files       []string
-}
-
 type annotateFileSet struct {
 	report []string
 	stage  []string
 	commit []string
 }
 
-// Annotate creates Chromium checkout commits grouped by build/features.yaml.
+// Annotate creates Chromium checkout commits grouped by the repo feature registry.
 func Annotate(ctx context.Context, opts AnnotateOptions) (*AnnotateResult, error) {
-	featuresFile := filepath.Join(opts.Repo.Root, "build", "features.yaml")
-	features, err := loadAnnotateFeatures(featuresFile)
+	features, featuresFile, err := LoadFeatures(opts.Repo)
 	if err != nil {
 		return nil, err
 	}
@@ -119,39 +109,6 @@ func Annotate(ctx context.Context, opts AnnotateOptions) (*AnnotateResult, error
 	return result, nil
 }
 
-func loadAnnotateFeatures(featuresFile string) ([]annotateFeature, error) {
-	body, err := os.ReadFile(featuresFile)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("features file not found: %s", featuresFile)
-		}
-		return nil, err
-	}
-	var root yaml.Node
-	if err := yaml.Unmarshal(body, &root); err != nil {
-		return nil, err
-	}
-	featuresNode := mappingValue(&root, "features")
-	if featuresNode == nil || featuresNode.Kind != yaml.MappingNode || len(featuresNode.Content) == 0 {
-		return nil, fmt.Errorf("no features found in %s", featuresFile)
-	}
-	features := make([]annotateFeature, 0, len(featuresNode.Content)/2)
-	for idx := 0; idx+1 < len(featuresNode.Content); idx += 2 {
-		name := featuresNode.Content[idx].Value
-		data := featuresNode.Content[idx+1]
-		description := scalarValue(data, "description")
-		if description == "" {
-			description = name
-		}
-		features = append(features, annotateFeature{
-			Name:        name,
-			Description: description,
-			Files:       stringSequence(data, "files"),
-		})
-	}
-	return features, nil
-}
-
 func mappingValue(node *yaml.Node, key string) *yaml.Node {
 	if node == nil {
 		return nil
@@ -200,7 +157,7 @@ func annotateChanges(ctx context.Context, workspacePath string) ([]git.FileChang
 	return git.StatusPorcelain(ctx, workspacePath, nil)
 }
 
-func modifiedFeatureFiles(changes []git.FileChange, feature annotateFeature) annotateFileSet {
+func modifiedFeatureFiles(changes []git.FileChange, feature FeatureSpec) annotateFileSet {
 	set := annotateFileSet{}
 	reportSeen := map[string]bool{}
 	stageSeen := map[string]bool{}
@@ -225,7 +182,7 @@ func modifiedFeatureFiles(changes []git.FileChange, feature annotateFeature) ann
 	return set
 }
 
-func featureMatchesChange(feature annotateFeature, change git.FileChange) bool {
+func featureMatchesChange(feature FeatureSpec, change git.FileChange) bool {
 	for _, rel := range changeReportPaths(change) {
 		if patch.PathMatches(rel, feature.Files) {
 			return true

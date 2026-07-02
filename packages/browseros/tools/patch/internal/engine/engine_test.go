@@ -1249,6 +1249,504 @@ func TestInspectWorkspaceReportsPendingStash(t *testing.T) {
 	}
 }
 
+func TestInspectWorkspaceDoesNotReportFreshFromStateAlone(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "browser.cc"), "base\n")
+	runGit(t, workspacePath, "add", "chrome/browser.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+	repoInfo := newPatchRepo(t, baseCommit)
+	repoHead := gitOutput(t, repoInfo.Root, "rev-parse", "HEAD")
+	if err := workspace.SaveState(workspacePath, &workspace.State{
+		Version:        1,
+		Workspace:      workspacePath,
+		BaseCommit:     baseCommit,
+		LastRefreshRev: repoHead,
+	}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	status, err := InspectWorkspace(ctx, InspectWorkspaceOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+	})
+	if err != nil {
+		t.Fatalf("InspectWorkspace: %v", err)
+	}
+	if status.PatchesFreshness == "fresh" {
+		t.Fatalf("state alone must not report fresh: %+v", status)
+	}
+	if status.PatchesRev != "" {
+		t.Fatalf("patches_rev should be empty without browseros trailer, got %q", status.PatchesRev)
+	}
+}
+
+func TestInspectWorkspaceReportsMismatchForDivergentMaterializedRev(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "browser.cc"), "base\n")
+	runGit(t, workspacePath, "add", "chrome/browser.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+	repoInfo := newPatchRepo(t, baseCommit)
+	mainBranch := gitOutput(t, repoInfo.Root, "branch", "--show-current")
+
+	runGit(t, repoInfo.Root, "checkout", "-b", "side")
+	writeFile(t, filepath.Join(repoInfo.Root, "side.txt"), "side\n")
+	runGit(t, repoInfo.Root, "add", "side.txt")
+	runGit(t, repoInfo.Root, "commit", "-m", "side")
+	sideRev := gitOutput(t, repoInfo.Root, "rev-parse", "HEAD")
+	runGit(t, repoInfo.Root, "checkout", mainBranch)
+	writeFile(t, filepath.Join(repoInfo.Root, "main.txt"), "main\n")
+	runGit(t, repoInfo.Root, "add", "main.txt")
+	runGit(t, repoInfo.Root, "commit", "-m", "main")
+
+	runGit(t, workspacePath, "checkout", "-b", "browseros")
+	runGit(t, workspacePath, "commit", "--allow-empty", "-m", "materialized", "-m", "Patches-Rev: "+sideRev)
+	if err := workspace.SaveState(workspacePath, &workspace.State{
+		Version:        1,
+		Workspace:      workspacePath,
+		BaseCommit:     baseCommit,
+		LastRefreshRev: sideRev,
+	}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	status, err := InspectWorkspace(ctx, InspectWorkspaceOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+	})
+	if err != nil {
+		t.Fatalf("InspectWorkspace: %v", err)
+	}
+	if status.PatchesFreshness != "mismatch" {
+		t.Fatalf("expected mismatch for divergent materialized rev, got %+v", status)
+	}
+}
+
+func TestRefreshRebuildsIdenticalBrowserOSBranchesAndFastNoops(t *testing.T) {
+	ctx := context.Background()
+	checkout1 := initGitRepo(t)
+	writeFile(t, filepath.Join(checkout1, "chrome", "a.cc"), "a base\n")
+	writeFile(t, filepath.Join(checkout1, "chrome", "b.cc"), "b base\n")
+	writeFile(t, filepath.Join(checkout1, "chrome", "c.cc"), "c base\n")
+	runGit(t, checkout1, "add", "chrome")
+	runGit(t, checkout1, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, checkout1, "rev-parse", "HEAD")
+
+	cloneParent := t.TempDir()
+	runGit(t, cloneParent, "clone", checkout1, "clone")
+	checkout2 := filepath.Join(cloneParent, "clone")
+	runGit(t, checkout2, "config", "user.name", "Test User")
+	runGit(t, checkout2, "config", "user.email", "test@example.com")
+	runGit(t, checkout1, "config", "commit.gpgsign", "true")
+	runGit(t, checkout2, "config", "commit.gpgsign", "true")
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	writePatchFromEdit(t, ctx, checkout1, repoInfo, baseCommit, "chrome/a.cc", "a patched\n")
+	writePatchFromEdit(t, ctx, checkout1, repoInfo, baseCommit, "chrome/b.cc", "b patched\n")
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  first:
+    description: "feat: first"
+    files:
+      - chrome/a.cc
+  second:
+    description: "feat: second"
+    files:
+      - chrome/b.cc
+`)
+	runGit(t, repoInfo.Root, "add", "chromium_patches", "bos_build/features.yaml")
+	runGit(t, repoInfo.Root, "commit", "-m", "patch stack")
+	repoHead := gitOutput(t, repoInfo.Root, "rev-parse", "HEAD")
+
+	first, err := Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "c1", Path: checkout1},
+		Repo:      repoInfo,
+		Pull:      false,
+	})
+	if err != nil {
+		t.Fatalf("refresh checkout1: %v", err)
+	}
+	second, err := Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "c2", Path: checkout2},
+		Repo:      repoInfo,
+		Pull:      false,
+	})
+	if err != nil {
+		t.Fatalf("refresh checkout2: %v", err)
+	}
+	if first.Result != "refreshed" || second.Result != "refreshed" {
+		t.Fatalf("expected refreshed results, got %+v %+v", first, second)
+	}
+	if len(first.Commits) != 2 || len(second.Commits) != 2 {
+		t.Fatalf("expected two commits per checkout, got %+v %+v", first.Commits, second.Commits)
+	}
+	if got := gitOutput(t, checkout1, "branch", "--show-current"); got != "browseros" {
+		t.Fatalf("checkout1 branch = %q, want browseros", got)
+	}
+	log1 := gitOutput(t, checkout1, "log", "--format=%s%n%B", "browseros", "--not", baseCommit)
+	log2 := gitOutput(t, checkout2, "log", "--format=%s%n%B", "browseros", "--not", baseCommit)
+	if log1 != log2 {
+		t.Fatalf("materialized logs differ\n--- checkout1 ---\n%s\n--- checkout2 ---\n%s", log1, log2)
+	}
+	tip1 := gitOutput(t, checkout1, "rev-parse", "browseros")
+	tip2 := gitOutput(t, checkout2, "rev-parse", "browseros")
+	if tip1 != tip2 {
+		t.Fatalf("browseros tips differ: %s != %s", tip1, tip2)
+	}
+	trailer := gitOutput(t, checkout1, "log", "-1", "--format=%B", "browseros")
+	if !strings.Contains(trailer, "Patches-Rev: "+repoHead) {
+		t.Fatalf("browseros tip missing patches trailer for %s:\n%s", repoHead, trailer)
+	}
+	state, err := workspace.LoadState(checkout1)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if state.LastRefreshRev != repoHead || state.BaseCommit != baseCommit {
+		t.Fatalf("unexpected refresh state: %+v", state)
+	}
+	headBefore := gitOutput(t, checkout1, "rev-parse", "HEAD")
+	fresh, err := Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "c1", Path: checkout1},
+		Repo:      repoInfo,
+		Pull:      false,
+	})
+	if err != nil {
+		t.Fatalf("fresh refresh: %v", err)
+	}
+	if fresh.Result != "fresh" || len(fresh.Commits) != 0 {
+		t.Fatalf("expected fast fresh no-op, got %+v", fresh)
+	}
+	if headAfter := gitOutput(t, checkout1, "rev-parse", "HEAD"); headAfter != headBefore {
+		t.Fatalf("fresh refresh moved HEAD: before %s after %s", headBefore, headAfter)
+	}
+
+	writePatchFromEdit(t, ctx, checkout1, repoInfo, baseCommit, "chrome/c.cc", "c patched\n")
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  first:
+    description: "feat: first"
+    files:
+      - chrome/a.cc
+  second:
+    description: "feat: second"
+    files:
+      - chrome/b.cc
+  third:
+    description: "feat: third"
+    files:
+      - chrome/c.cc
+`)
+	runGit(t, repoInfo.Root, "add", "chromium_patches", "bos_build/features.yaml")
+	runGit(t, repoInfo.Root, "commit", "-m", "add third patch")
+
+	status, err := InspectWorkspace(ctx, InspectWorkspaceOptions{
+		Workspace: workspace.Entry{Name: "c1", Path: checkout1},
+		Repo:      repoInfo,
+	})
+	if err != nil {
+		t.Fatalf("InspectWorkspace: %v", err)
+	}
+	if status.PatchesFreshness != "behind 1" || status.PatchesBehind != 1 {
+		t.Fatalf("expected behind 1 freshness, got %+v", status)
+	}
+}
+
+func TestRefreshPreconditionsAndForce(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "a.cc"), "a base\n")
+	runGit(t, workspacePath, "add", "chrome/a.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	writePatchFromEdit(t, ctx, workspacePath, repoInfo, baseCommit, "chrome/a.cc", "a patched\n")
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  first:
+    description: "feat: first"
+    files:
+      - chrome/a.cc
+`)
+	runGit(t, repoInfo.Root, "add", "chromium_patches", "bos_build/features.yaml")
+	runGit(t, repoInfo.Root, "commit", "-m", "patch stack")
+	runGit(t, workspacePath, "checkout", "-b", "task/demo")
+	writeFile(t, filepath.Join(workspacePath, "chrome", "a.cc"), "local dirty\n")
+	writeFile(t, filepath.Join(workspacePath, "scratch.txt"), "keep me\n")
+
+	_, err := Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+		Pull:      false,
+	})
+	if err == nil || !strings.Contains(err.Error(), "task branches are leased") {
+		t.Fatalf("expected task branch refusal, got %v", err)
+	}
+
+	result, err := Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+		Force:     true,
+		Pull:      false,
+	})
+	if err != nil {
+		t.Fatalf("force refresh: %v", err)
+	}
+	if result.Result != "refreshed" {
+		t.Fatalf("expected refreshed, got %+v", result)
+	}
+	assertFile(t, filepath.Join(workspacePath, "scratch.txt"), "keep me\n")
+	if got := gitOutput(t, workspacePath, "branch", "--show-current"); got != "browseros" {
+		t.Fatalf("branch = %q, want browseros", got)
+	}
+}
+
+func TestRefreshRefusesUntrackedPatchTargetCollision(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "base.cc"), "base\n")
+	runGit(t, workspacePath, "add", "chrome/base.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "new.cc"), "untracked local\n")
+	diff, err := git.DiffNoIndex(ctx, workspacePath, "chrome/new.cc")
+	if err != nil {
+		t.Fatalf("DiffNoIndex: %v", err)
+	}
+	writeFile(t, filepath.Join(repoInfo.PatchesDir, "chrome", "new.cc"), diff)
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  new-file:
+    description: "feat: new file"
+    files:
+      - chrome/new.cc
+`)
+	runGit(t, repoInfo.Root, "add", "chromium_patches", "bos_build/features.yaml")
+	runGit(t, repoInfo.Root, "commit", "-m", "patch stack")
+
+	_, err = Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+		Force:     true,
+		Pull:      false,
+	})
+	if err == nil || !strings.Contains(err.Error(), "untracked files collide") {
+		t.Fatalf("expected untracked collision error, got %v", err)
+	}
+	assertFile(t, filepath.Join(workspacePath, "chrome", "new.cc"), "untracked local\n")
+}
+
+func TestRefreshEmptyPatchStackCreatesFreshMaterializationCommit(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "base.cc"), "base\n")
+	runGit(t, workspacePath, "add", "chrome/base.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  empty:
+    description: "chore: empty"
+    files: []
+`)
+	runGit(t, repoInfo.Root, "add", "bos_build/features.yaml")
+	runGit(t, repoInfo.Root, "commit", "-m", "empty feature registry")
+	repoHead := gitOutput(t, repoInfo.Root, "rev-parse", "HEAD")
+
+	result, err := Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+		Pull:      false,
+	})
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if len(result.Commits) != 1 || result.Commits[0].Feature != "materialization" {
+		t.Fatalf("expected materialization commit, got %+v", result.Commits)
+	}
+	trailer := gitOutput(t, workspacePath, "log", "-1", "--format=%B", "browseros")
+	if !strings.Contains(trailer, "Patches-Rev: "+repoHead) {
+		t.Fatalf("materialization commit missing trailer:\n%s", trailer)
+	}
+	fresh, err := Refresh(ctx, RefreshOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+		Pull:      false,
+	})
+	if err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	if fresh.Result != "fresh" {
+		t.Fatalf("expected second refresh to be fresh, got %+v", fresh)
+	}
+}
+
+func TestFeatureLintReportsUnclaimedAndDuplicatePatchClaims(t *testing.T) {
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "a.cc"), "a base\n")
+	writeFile(t, filepath.Join(workspacePath, "chrome", "b.cc"), "b base\n")
+	runGit(t, workspacePath, "add", "chrome")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	writeFile(t, filepath.Join(repoInfo.PatchesDir, "chrome", "a.cc"), testPatchContent("chrome/a.cc", "a base", "a new"))
+	writeFile(t, filepath.Join(repoInfo.PatchesDir, "chrome", "b.cc"), testPatchContent("chrome/b.cc", "b base", "b new"))
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  broad:
+    description: "chore: broad"
+    files:
+      - chrome/
+  specific:
+    description: "chore: specific"
+    files:
+      - chrome/a.cc
+`)
+
+	result, err := LintFeatures(repoInfo)
+	if err != nil {
+		t.Fatalf("LintFeatures: %v", err)
+	}
+	if len(result.Unclaimed) != 0 {
+		t.Fatalf("expected no unclaimed patches, got %v", result.Unclaimed)
+	}
+	if len(result.Duplicates) != 1 || result.Duplicates[0].Path != "chrome/a.cc" {
+		t.Fatalf("expected duplicate chrome/a.cc, got %+v", result.Duplicates)
+	}
+	if err := result.Error(); err == nil || !strings.Contains(err.Error(), "chrome/a.cc claimed by broad, specific") {
+		t.Fatalf("expected duplicate error, got %v", err)
+	}
+
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  specific:
+    description: "chore: specific"
+    files:
+      - chrome/a.cc
+`)
+	result, err = LintFeatures(repoInfo)
+	if err != nil {
+		t.Fatalf("LintFeatures unclaimed: %v", err)
+	}
+	if !slices.Equal(result.Unclaimed, []string{"chrome/b.cc"}) {
+		t.Fatalf("expected chrome/b.cc unclaimed, got %v", result.Unclaimed)
+	}
+}
+
+func TestFeatureAddExcludesExistingClaimsAndLintPasses(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "existing.cc"), "existing base\n")
+	runGit(t, workspacePath, "add", "chrome/existing.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+	runGit(t, workspacePath, "checkout", "-b", "browseros")
+	runGit(t, workspacePath, "checkout", "-b", "task/demo")
+	writeFile(t, filepath.Join(workspacePath, "chrome", "existing.cc"), "existing task\n")
+	writeFile(t, filepath.Join(workspacePath, "chrome", "new.cc"), "new task\n")
+	runGit(t, workspacePath, "add", "chrome")
+	runGit(t, workspacePath, "commit", "-m", "feat: demo")
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	initialFeatures := `version: "1.0"
+features:
+  # keep curated comments
+  existing:
+    description: "chore: existing"
+    files:
+      - chrome/existing.cc
+`
+	writeFeaturesYAML(t, repoInfo.Root, initialFeatures)
+	if _, err := Extract(ctx, ExtractOptions{
+		Workspace:  workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:       repoInfo,
+		RangeStart: "browseros",
+		RangeEnd:   "task/demo",
+		Squash:     true,
+	}); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	result, err := AddFeatureFromRange(ctx, FeatureAddOptions{
+		Workspace:   workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:        repoInfo,
+		Name:        "demo",
+		Description: "feat: demo",
+		RangeStart:  "browseros",
+		RangeEnd:    "task/demo",
+	})
+	if err != nil {
+		t.Fatalf("AddFeatureFromRange: %v", err)
+	}
+	if !slices.Equal(result.Added, []string{"chrome/new.cc"}) {
+		t.Fatalf("added files = %v, want chrome/new.cc", result.Added)
+	}
+	if len(result.Excluded) != 1 || result.Excluded[0].Path != "chrome/existing.cc" {
+		t.Fatalf("expected existing file excluded, got %+v", result.Excluded)
+	}
+	lint, err := LintFeatures(repoInfo)
+	if err != nil {
+		t.Fatalf("LintFeatures: %v", err)
+	}
+	if err := lint.Error(); err != nil {
+		t.Fatalf("feature lint should pass after add: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(repoInfo.Root, "bos_build", "features.yaml"))
+	if err != nil {
+		t.Fatalf("read features: %v", err)
+	}
+	if !strings.HasPrefix(string(body), initialFeatures+"\n") {
+		t.Fatalf("feature add should preserve existing yaml text, got:\n%s", body)
+	}
+	for _, want := range []string{"demo:", `description: "feat: demo"`, "chrome/new.cc"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("expected features yaml to contain %q, got:\n%s", want, body)
+		}
+	}
+}
+
+func TestFeatureAddFailsBeforeRangeFilesAreExtracted(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "existing.cc"), "existing base\n")
+	runGit(t, workspacePath, "add", "chrome/existing.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+	runGit(t, workspacePath, "checkout", "-b", "browseros")
+	runGit(t, workspacePath, "checkout", "-b", "task/demo")
+	writeFile(t, filepath.Join(workspacePath, "chrome", "new.cc"), "new task\n")
+	runGit(t, workspacePath, "add", "chrome/new.cc")
+	runGit(t, workspacePath, "commit", "-m", "feat: demo")
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  existing:
+    description: "chore: existing"
+    files:
+      - chrome/existing.cc
+`)
+	_, err := AddFeatureFromRange(ctx, FeatureAddOptions{
+		Workspace:   workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:        repoInfo,
+		Name:        "demo",
+		Description: "feat: demo",
+		RangeStart:  "browseros",
+		RangeEnd:    "task/demo",
+	})
+	if err == nil || !strings.Contains(err.Error(), "not extracted to chromium_patches: chrome/new.cc") {
+		t.Fatalf("expected missing extraction error, got %v", err)
+	}
+}
+
 func TestOrphanSummaryGroupsByTopLevelDir(t *testing.T) {
 	groups := OrphanSummary([]string{
 		"chrome/app/one.cc",
@@ -1438,7 +1936,28 @@ func writeFile(t *testing.T, path string, body string) {
 
 func writeFeaturesYAML(t *testing.T, repoRoot string, body string) {
 	t.Helper()
-	writeFile(t, filepath.Join(repoRoot, "build", "features.yaml"), body)
+	writeFile(t, filepath.Join(repoRoot, "bos_build", "features.yaml"), body)
+}
+
+func writePatchFromEdit(t *testing.T, ctx context.Context, workspacePath string, repoInfo *repo.Info, baseCommit string, rel string, body string) {
+	t.Helper()
+	writeFile(t, filepath.Join(workspacePath, filepath.FromSlash(rel)), body)
+	diff, err := git.DiffText(ctx, workspacePath, baseCommit, "--", rel)
+	if err != nil {
+		t.Fatalf("DiffText %s: %v", rel, err)
+	}
+	writeFile(t, filepath.Join(repoInfo.PatchesDir, filepath.FromSlash(rel)), diff)
+	runGit(t, workspacePath, "checkout", baseCommit, "--", rel)
+}
+
+func testPatchContent(rel string, oldLine string, newLine string) string {
+	return "diff --git a/" + rel + " b/" + rel + "\n" +
+		"index 0000000000000000000000000000000000000000..1111111111111111111111111111111111111111 100644\n" +
+		"--- a/" + rel + "\n" +
+		"+++ b/" + rel + "\n" +
+		"@@ -1 +1 @@\n" +
+		"-" + oldLine + "\n" +
+		"+" + newLine + "\n"
 }
 
 func assertFile(t *testing.T, path string, want string) {
