@@ -1,9 +1,9 @@
 diff --git a/chrome/browser/browseros/server/BUILD.gn b/chrome/browser/browseros/server/BUILD.gn
 new file mode 100644
-index 0000000000000..8f1f42fae7854
+index 0000000000000..aed05041c83b4
 --- /dev/null
 +++ b/chrome/browser/browseros/server/BUILD.gn
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,175 @@
 +# Copyright 2024 The Chromium Authors
 +# Use of this source code is governed by a BSD-style license that can be
 +# found in the LICENSE file.
@@ -110,6 +110,7 @@ index 0000000000000..8f1f42fae7854
 +    "browseros_appcast_parser_unittest.cc",
 +    "browseros_server_config_unittest.cc",
 +    "browseros_server_manager_unittest.cc",
++    "browseros_server_proxy_unittest.cc",
 +    "browseros_server_utils_unittest.cc",
 +  ]
 +
@@ -122,6 +123,7 @@ index 0000000000000..8f1f42fae7854
 +    "//chrome/browser/browseros/core",
 +    "//components/prefs:test_support",
 +    "//net",
++    "//net:test_support",
 +    "//testing/gmock",
 +    "//testing/gtest",
 +  ]

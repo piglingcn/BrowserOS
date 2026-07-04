@@ -1,9 +1,9 @@
 diff --git a/chrome/browser/browseros/server/browseros_server_manager.h b/chrome/browser/browseros/server/browseros_server_manager.h
 new file mode 100644
-index 0000000000000..6c9a7e03ebc0d
+index 0000000000000..36c2cc1a7f1e0
 --- /dev/null
 +++ b/chrome/browser/browseros/server/browseros_server_manager.h
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,169 @@
 +// Copyright 2024 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -23,6 +23,7 @@ index 0000000000000..6c9a7e03ebc0d
 +#include "base/process/process.h"
 +#include "base/timer/timer.h"
 +#include "chrome/browser/browseros/server/browseros_server_config.h"
++#include "chrome/browser/browseros/server/browseros_server_prefs.h"
 +#include "chrome/browser/browseros/server/process_controller.h"
 +
 +class PrefChangeRegistrar;
@@ -147,6 +148,7 @@ index 0000000000000..6c9a7e03ebc0d
 +  base::File lock_file_;
 +  base::Process process_;
 +  ServerPorts ports_;
++  int proxy_https_port_ = browseros_server::kDefaultProxyHttpsPort;
 +  bool allow_remote_in_mcp_ = false;
 +  bool is_running_ = false;
 +  bool is_restarting_ = false;
