@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for copy_resources against a mock chromium checkout."""
 
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -350,6 +351,46 @@ class CopyResourcesTest(unittest.TestCase):
         )
         self.assertEqual(browseros_dest.read_text(), "browseros")
         self.assertEqual(claw_dest.read_text(), "claw")
+
+    def test_real_config_copies_claw_onboard_resources_for_both_products(self):
+        # The downloaded onboarding dist must land in the grit resources dir
+        # for every product, since the onboarding pak builds unconditionally.
+        self.root.write_copy_config(self._real_copy_config())
+        onboard_source = (
+            self.root.root / "resources" / "binaries" / "browseros_claw_onboard" / "resources"
+        )
+        (onboard_source / "icon").mkdir(parents=True)
+        (onboard_source / "index.html").write_text("<html>onboard</html>")
+        (onboard_source / "icon" / "32.png").write_text("icon-bytes")
+
+        onboard_dest = (
+            self.chromium.src / "chrome" / "browser" / "browseros" / "onboarding" / "resources"
+        )
+
+        for product in ("browseros", "browserclaw"):
+            with self.subTest(product=product):
+                if onboard_dest.exists():
+                    shutil.rmtree(onboard_dest)
+
+                with patch(
+                    "bos_build.steps.resources.resources.get_platform",
+                    return_value="macos",
+                ):
+                    ctx = make_context(
+                        self.chromium,
+                        self.root,
+                        architecture="arm64",
+                        build_type="release",
+                        product=product,
+                    )
+                    self.assertTrue(copy_resources_impl(ctx))
+
+                self.assertEqual(
+                    (onboard_dest / "index.html").read_text(), "<html>onboard</html>"
+                )
+                self.assertEqual(
+                    (onboard_dest / "icon" / "32.png").read_text(), "icon-bytes"
+                )
 
     def _real_copy_config(self) -> dict:
         config_path = (

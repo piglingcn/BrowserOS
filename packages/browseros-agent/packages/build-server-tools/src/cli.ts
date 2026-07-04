@@ -1,7 +1,12 @@
 import { Command } from 'commander'
 
 import { resolveTargets } from './targets'
-import type { BuildArgs, BuildProductDescriptor } from './types'
+import type {
+  AssetBuildArgs,
+  AssetBuildProductDescriptor,
+  BuildArgs,
+  BuildProductDescriptor,
+} from './types'
 
 export function parseBuildArgs(
   argv: string[],
@@ -42,6 +47,37 @@ export function parseBuildArgs(
   return {
     targets: resolveTargets(options.target),
     manifestPath: options.manifest,
+    upload: ci ? false : (options.upload ?? product.defaultUpload ?? true),
+    ci,
+  }
+}
+
+export function parseAssetBuildArgs(
+  argv: string[],
+  product: AssetBuildProductDescriptor,
+): AssetBuildArgs {
+  const program = new Command()
+  program
+    .allowUnknownOption(false)
+    .allowExcessArguments(false)
+    .exitOverride((error) => {
+      throw new Error(error.message)
+    })
+    .option('--upload', 'Upload the artifact zip to R2')
+    .option('--no-upload', 'Skip zip upload to R2')
+    .option(
+      '--ci',
+      'Build the local release zip artifact for CI without R2 and without requiring production env secrets',
+    )
+  program.parse(argv, { from: 'user' })
+  const options = program.opts<{ upload?: boolean; ci?: boolean }>()
+
+  const ci = options.ci ?? false
+  if (ci && options.upload) {
+    throw new Error('--ci cannot be combined with --upload')
+  }
+
+  return {
     upload: ci ? false : (options.upload ?? product.defaultUpload ?? true),
     ci,
   }

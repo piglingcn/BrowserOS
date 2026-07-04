@@ -17,7 +17,7 @@ function zipPathForArtifact(
   )
 }
 
-async function zipArtifactRoot(
+export async function zipDirectory(
   artifactRoot: string,
   outputZipPath: string,
 ): Promise<void> {
@@ -72,7 +72,7 @@ export async function archiveArtifacts(
 
   for (const artifact of artifacts) {
     const zipPath = zipPathForArtifact(artifact, archiveBaseName)
-    await zipArtifactRoot(artifact.rootDir, zipPath)
+    await zipDirectory(artifact.rootDir, zipPath)
     results.push({ targetId: artifact.target.id, zipPath })
   }
 

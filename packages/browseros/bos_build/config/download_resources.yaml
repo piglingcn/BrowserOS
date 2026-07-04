@@ -24,6 +24,7 @@
 # R2 Path Structure:
 #   artifacts/server/latest/browseros-server-resources-{target}.zip
 #   claw-server/prod-resources/latest/browseros-claw-server-resources-{target}.zip
+#   claw-onboard/prod-resources/latest/browseros-claw-onboard-resources.zip
 #
 # Example:
 #   - name: "My Artifact - macOS ARM64"
@@ -105,3 +106,10 @@ download_operations:
     download_type: "artifact_zip"
     os: ["windows"]
     arch: ["x64"]
+
+  # BrowserOS Claw onboarding static resources - platform-independent, feeds
+  # the onboarding grit pak built for every product (no os/arch/product gate)
+  - name: "BrowserOS Claw Onboarding Resources"
+    r2_key: "claw-onboard/prod-resources/latest/browseros-claw-onboard-resources.zip"
+    destination: "resources/binaries/browseros_claw_onboard"
+    download_type: "artifact_zip"

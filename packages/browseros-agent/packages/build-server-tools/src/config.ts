@@ -3,11 +3,11 @@ import { join } from 'node:path'
 
 import { parse } from 'dotenv'
 
-import type { BuildConfig, BuildProductDescriptor } from './types'
+import type { BuildConfig, ProductBuildSpec } from './types'
 
 function readPackageVersion(
   rootDir: string,
-  product: BuildProductDescriptor,
+  product: ProductBuildSpec,
 ): string {
   const pkgPath = join(rootDir, product.packageDir, 'package.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
@@ -17,7 +17,7 @@ function readPackageVersion(
 function pickEnv(
   name: string,
   fileEnv: Record<string, string>,
-  product: BuildProductDescriptor,
+  product: ProductBuildSpec,
 ): string {
   const value = process.env[name] ?? fileEnv[name]
   if (!value || value.trim().length === 0) {
@@ -30,7 +30,7 @@ function pickEnv(
 
 function loadProdEnv(
   rootDir: string,
-  product: BuildProductDescriptor,
+  product: ProductBuildSpec,
   options: { required?: boolean } = {},
 ): Record<string, string> {
   const prodEnvPath = join(rootDir, product.env.prodEnvPath)
@@ -50,7 +50,7 @@ function loadProdEnv(
 }
 
 function buildInlineEnv(
-  product: BuildProductDescriptor,
+  product: ProductBuildSpec,
   fileEnv: Record<string, string>,
 ): Record<string, string> {
   const inlineEnv: Record<string, string> = {}
@@ -64,7 +64,7 @@ function buildInlineEnv(
 }
 
 function validateProductionEnv(
-  product: BuildProductDescriptor,
+  product: ProductBuildSpec,
   envVars: Record<string, string>,
 ): void {
   const missing = product.env.requiredInlineEnvKeys.filter((name) => {
@@ -88,7 +88,7 @@ export interface LoadBuildConfigOptions {
 /** Loads version, inline env, subprocess env, and optional R2 config for one product build. */
 export function loadBuildConfig(
   rootDir: string,
-  product: BuildProductDescriptor,
+  product: ProductBuildSpec,
   options: LoadBuildConfigOptions = {},
 ): BuildConfig {
   const requireProdEnv = !options.ci && product.env.requireProdEnvFile !== false

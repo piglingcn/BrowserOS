@@ -2,8 +2,6 @@ import { createHash } from 'node:crypto'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 
-import type { BuildTarget } from './types'
-
 interface MetadataFile {
   path: string
   sha256: string
@@ -45,7 +43,7 @@ async function toMetadataFile(
 
 export async function writeArtifactMetadata(
   artifactRoot: string,
-  target: BuildTarget,
+  targetId: string,
   version: string,
 ): Promise<string> {
   const fileList = await collectFiles(artifactRoot, artifactRoot)
@@ -61,7 +59,7 @@ export async function writeArtifactMetadata(
     JSON.stringify(
       {
         version,
-        target: target.id,
+        target: targetId,
         generatedAt: new Date().toISOString(),
         files,
       },

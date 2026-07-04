@@ -7,7 +7,7 @@
 import {
   BROWSEROS_MCP_SERVER_NAME,
   MCP_PATH,
-} from '@browseros/claw-server/shared/mcp-url'
+} from '@browseros/claw-server/shared/mcp-url-common'
 import { CLAW_API_PORT_DEFAULT } from '@browseros/claw-server/shared/port'
 import {
   API_URL_STORAGE_KEY,

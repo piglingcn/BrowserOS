@@ -197,6 +197,9 @@ tmp/
 .ci/
 test-results/
 
+# Bun compile temp artifacts (dropped by bun build --compile test runs)
+.*.bun-build
+
 # Coding agent artifacts
 .agent/
 .llm/

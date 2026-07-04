@@ -305,9 +305,46 @@ class DownloadResourceConfigTest(unittest.TestCase):
                 "BrowserOS Server Resources - macOS x64",
                 "BrowserOS Claw Server Resources - macOS ARM64",
                 "BrowserOS Claw Server Resources - macOS x64",
+                "BrowserOS Claw Onboarding Resources",
             ],
             [op["name"] for op in filtered],
         )
+
+    def test_real_config_includes_claw_onboard_resources_everywhere(self) -> None:
+        # The onboarding dist is platform-independent and its grit pak is
+        # built for every product, so the operation must carry no gates.
+        operations = self._real_download_operations()
+        expected = (
+            "BrowserOS Claw Onboarding Resources",
+            "claw-onboard/prod-resources/latest/browseros-claw-onboard-resources.zip",
+            "resources/binaries/browseros_claw_onboard",
+        )
+
+        onboard_ops = [op for op in operations if op["name"] == expected[0]]
+        self.assertEqual(1, len(onboard_ops))
+        self.assertEqual("artifact_zip", onboard_ops[0]["download_type"])
+
+        for platform, architecture in [
+            ("macos", "arm64"),
+            ("macos", "x64"),
+            ("macos", "universal"),
+            ("linux", "arm64"),
+            ("linux", "x64"),
+            ("windows", "x64"),
+        ]:
+            for product in ("browseros", "browserclaw"):
+                with self.subTest(
+                    platform=platform, arch=architecture, product=product
+                ):
+                    filtered = self._filter_operations(
+                        operations, platform, architecture, product
+                    )
+                    actual = [
+                        (op["name"], op["r2_key"], op["destination"])
+                        for op in filtered
+                        if op["name"] == expected[0]
+                    ]
+                    self.assertEqual([expected], actual)
 
     def test_real_config_includes_server_artifacts_for_browserclaw_product(self) -> None:
         operations = self._real_download_operations()

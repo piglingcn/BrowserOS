@@ -267,6 +267,7 @@ jobs:
           bun ci
           bun scripts/build/server.ts --target=darwin-arm64 --ci
           bun scripts/build/claw-server.ts --target=darwin-arm64 --ci
+          bun scripts/build/claw-onboard.ts --ci
 
           cd "$browseros_root"
           AGENT_ROOT="$agent_root" BROWSEROS_ROOT="$browseros_root" uv run python - <<'PY'
@@ -286,6 +287,10 @@ jobs:
               (
                   agent_root / "dist/prod/claw-server/browseros-claw-server-resources-darwin-arm64.zip",
                   browseros_root / "resources/binaries/browseros_claw_server/darwin-arm64",
+              ),
+              (
+                  agent_root / "dist/prod/claw-onboard/browseros-claw-onboard-resources.zip",
+                  browseros_root / "resources/binaries/browseros_claw_onboard",
               ),
           ]
 

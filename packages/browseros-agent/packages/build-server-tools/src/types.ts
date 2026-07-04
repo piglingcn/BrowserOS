@@ -50,9 +50,13 @@ export interface BundleOptions {
   plugins?: BunPlugin[]
 }
 
-export interface BuildProductDescriptor {
+export interface ProductBuildSpec {
   label: string
   packageDir: string
+  env: BuildEnvSpec
+}
+
+export interface BuildProductDescriptor extends ProductBuildSpec {
   entrypoint: string
   distRoot: string
   rawBinaryBaseName: string
@@ -60,8 +64,26 @@ export interface BuildProductDescriptor {
   archiveBaseName: string
   defaultManifestPath: string
   defaultUpload?: boolean
-  env: BuildEnvSpec
   bundle?: BundleOptions
+}
+
+export interface AssetBuildProductDescriptor extends ProductBuildSpec {
+  buildCommand: readonly string[]
+  assetsDir: string
+  distRoot: string
+  archiveBaseName: string
+  defaultUpload?: boolean
+}
+
+export interface AssetBuildArgs {
+  upload: boolean
+  ci: boolean
+}
+
+export interface StagedAssetArtifact {
+  rootDir: string
+  resourcesDir: string
+  metadataPath: string
 }
 
 export interface BuildConfig {

@@ -1,8 +1,17 @@
 export {
   archiveAndUploadArtifacts,
   archiveArtifacts,
+  zipDirectory,
 } from './archive'
-export { parseBuildArgs } from './cli'
+export {
+  ASSET_TARGET_ID,
+  type AssetUploadResult,
+  archiveAssetArtifact,
+  runProdAssetBuild,
+  stageAssetArtifact,
+  uploadAssetArchive,
+} from './assets'
+export { parseAssetBuildArgs, parseBuildArgs } from './cli'
 export { runCommand } from './command'
 export { compiledBinaryPath, compileProductBinaries } from './compile'
 export { loadBuildConfig } from './config'
@@ -17,16 +26,20 @@ export {
 } from './stage'
 export { resolveTargets } from './targets'
 export type {
+  AssetBuildArgs,
+  AssetBuildProductDescriptor,
   BuildArgs,
   BuildConfig,
   BuildEnvSpec,
   BuildProductDescriptor,
   BuildTarget,
   CompiledServerBinary,
+  ProductBuildSpec,
   R2Config,
   ResourceManifest,
   ResourceRule,
   StagedArtifact,
+  StagedAssetArtifact,
   TargetArch,
   TargetId,
   TargetOs,

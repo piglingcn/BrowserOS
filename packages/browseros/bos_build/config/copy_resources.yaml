@@ -218,3 +218,10 @@ copy_operations:
     type: "directory"
     os: ["windows"]
     arch: ["x64"]
+
+  # BrowserOS Claw onboarding static resources - platform-independent dist
+  # downloaded from R2, feeds the onboarding grit pak built for every product
+  - name: "BrowserOS Claw Onboarding Resources"
+    source: "resources/binaries/browseros_claw_onboard/resources"
+    destination: "chrome/browser/browseros/onboarding/resources"
+    type: "directory"

@@ -70,7 +70,7 @@ async function finalizeArtifact(
   target: BuildTarget,
   version: string,
 ): Promise<StagedArtifact> {
-  const metadataPath = await writeArtifactMetadata(rootDir, target, version)
+  const metadataPath = await writeArtifactMetadata(rootDir, target.id, version)
   return {
     target,
     rootDir,
