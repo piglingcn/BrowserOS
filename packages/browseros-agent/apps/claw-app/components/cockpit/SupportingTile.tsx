@@ -77,10 +77,10 @@ function Caption({
         <AgentDot slug={task.slug} />
         <span className="truncate text-white/95">{task.agentLabel}</span>
         {isLive && (
-          <span className="inline-flex items-center gap-1 text-[#b1dbb8]">
+          <span className="inline-flex items-center gap-1 text-[#8fb4ff]">
             <span
               aria-hidden
-              className="inline-block size-1.5 animate-[pulse-dot_1.4s_ease-in-out_infinite] rounded-full bg-[#b1dbb8]"
+              className="inline-block size-1.5 animate-[pulse-dot_1.4s_ease-in-out_infinite] rounded-full bg-[#8fb4ff]"
             />
             LIVE
           </span>
@@ -100,13 +100,10 @@ function Caption({
 }
 
 function NoShotComposition({ task }: { task: TaskSummary }) {
-  // Small typographic composition, still on the same dark ink
-  // background so the caption block flows continuously into the
-  // top zone. Keeps the tile a single dark object rather than a
-  // two-color card.
+  // Uses the fixed ink-deep surface pair so the top zone stays dark in both themes.
   const verbs = task.toolSequence.slice(0, 4)
   return (
-    <div className="absolute inset-0 bg-gradient-to-br from-ink via-ink-2 to-ink">
+    <div className="absolute inset-0 bg-gradient-to-br from-ink-deep via-ink-deep-2 to-ink-deep">
       <div className="pointer-events-none absolute inset-0 flex flex-col justify-center gap-0.5 pl-4 font-mono text-[14px] text-white/18 leading-tight tracking-tight">
         {verbs.map((verb, idx) => (
           <span

@@ -186,7 +186,7 @@ export function FilterBar({
           placeholder="search sessions..."
           // pr-7 reserves space for the inline clear button so the
           // text never sits under the icon.
-          className="h-8 w-64 border-none bg-transparent pr-7 pl-8 font-mono text-[11.5px] text-ink-1 placeholder:text-ink-3 focus-visible:bg-card-tint focus-visible:ring-0"
+          className="h-8 w-64 border-none bg-transparent pr-7 pl-8 font-mono text-[11.5px] text-ink placeholder:text-ink-3 focus-visible:bg-card-tint focus-visible:ring-0"
         />
         {localSearch.length > 0 && (
           <button
@@ -194,7 +194,7 @@ export function FilterBar({
             onClick={clearSearch}
             aria-label="Clear search"
             data-testid="filter-search-clear"
-            className="absolute right-1.5 inline-flex size-5 items-center justify-center rounded text-ink-3 transition-colors hover:bg-card-tint hover:text-ink-1"
+            className="absolute right-1.5 inline-flex size-5 items-center justify-center rounded text-ink-3 transition-colors hover:bg-card-tint hover:text-ink"
           >
             <X className="size-3.5" />
           </button>

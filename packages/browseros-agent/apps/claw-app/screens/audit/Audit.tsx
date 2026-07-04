@@ -250,7 +250,7 @@ export function Audit() {
                 type="button"
                 onClick={fetchNextPage}
                 disabled={isFetchingNextPage}
-                className="group inline-flex items-center gap-1.5 font-mono text-[12px] text-ink-3 uppercase tracking-[0.08em] transition-colors hover:text-ink-1 disabled:cursor-not-allowed disabled:opacity-60"
+                className="group inline-flex items-center gap-1.5 font-mono text-[12px] text-ink-3 uppercase tracking-[0.08em] transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isFetchingNextPage ? 'Loading...' : 'Load older tasks'}
                 <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />

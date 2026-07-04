@@ -47,7 +47,7 @@ export function TaskHeader({ task }: TaskHeaderProps) {
       <button
         type="button"
         onClick={() => navigate(backTo)}
-        className="inline-flex items-center gap-1 text-[12.5px] text-ink-3 hover:text-ink-1"
+        className="inline-flex items-center gap-1 text-[12.5px] text-ink-3 hover:text-ink"
       >
         <ChevronLeft className="size-3.5" />
         Back
@@ -58,9 +58,7 @@ export function TaskHeader({ task }: TaskHeaderProps) {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <AgentDot slug={task.slug} />
-              <span className="font-semibold text-ink-1">
-                {task.agentLabel}
-              </span>
+              <span className="font-semibold text-ink">{task.agentLabel}</span>
               <StatusBadge status={task.status} />
               {task.errorCount > 0 && (
                 <span className="text-[12.5px] text-red-600 dark:text-red-400">

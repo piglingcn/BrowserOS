@@ -39,7 +39,7 @@ export function TaskCard({ task, now }: TaskCardProps) {
     >
       <header className="flex items-center gap-2">
         <AgentDot slug={task.slug} />
-        <span className="font-semibold text-ink-1">{task.agentLabel}</span>
+        <span className="font-semibold text-ink">{task.agentLabel}</span>
         <StatusBadge status={task.status} />
         <div className="flex-1" />
         <span className="text-[12px] text-ink-3">
@@ -76,7 +76,7 @@ export function TaskCard({ task, now }: TaskCardProps) {
           </div>
         )}
         <div className="min-w-0 flex-1 space-y-1.5">
-          <h3 className="truncate font-semibold text-ink-1">{task.title}</h3>
+          <h3 className="truncate font-semibold text-ink">{task.title}</h3>
           <div className="flex items-center gap-3 text-[12.5px] text-ink-3">
             <span className="font-mono">{formatDuration(task.durationMs)}</span>
             <span className="text-ink-3">•</span>

@@ -41,7 +41,7 @@ export function RunRow({ task, now }: RunRowProps) {
           </span>
         )}
       </span>
-      <span className="min-w-0 truncate text-[13px] text-ink-1">
+      <span className="min-w-0 truncate text-[13px] text-ink">
         {task.title}
       </span>
       <span className="hidden truncate font-mono text-[11.5px] text-ink-3 md:inline-block md:max-w-[240px]">

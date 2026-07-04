@@ -112,7 +112,7 @@ export function Mcp() {
       <HeroCard url={url} />
       <section className="space-y-2">
         <header className="flex items-baseline justify-between gap-3">
-          <h2 className="font-semibold text-ink-1 text-lg">Connected agents</h2>
+          <h2 className="font-semibold text-ink text-lg">Connected agents</h2>
           {!isLoading && !connections.isError && (
             <span className="font-mono text-[10.5px] text-ink-3 uppercase tabular-nums tracking-[0.08em]">
               {connectedCount} of {totalCount} connected

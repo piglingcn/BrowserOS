@@ -90,7 +90,7 @@ export function Timeline({
   return (
     <section className="rounded-2xl border border-border-2 bg-card p-4">
       <header className="flex items-center justify-between gap-3 pb-3">
-        <h2 className="font-semibold text-ink-1">Timeline</h2>
+        <h2 className="font-semibold text-ink">Timeline</h2>
         <div className="flex items-center gap-1.5">
           <Button
             type="button"
@@ -98,7 +98,7 @@ export function Timeline({
             size="sm"
             onClick={expandAll}
             disabled={allExpanded || dispatches.length === 0}
-            className="h-7 gap-1 px-2 text-[11.5px] text-ink-3 hover:text-ink-1"
+            className="h-7 gap-1 px-2 text-[11.5px] text-ink-3 hover:text-ink"
             data-testid="timeline-expand-all"
           >
             <ChevronsUpDown className="size-3.5" />
@@ -110,7 +110,7 @@ export function Timeline({
             size="sm"
             onClick={collapseAll}
             disabled={noneExpanded}
-            className="h-7 gap-1 px-2 text-[11.5px] text-ink-3 hover:text-ink-1"
+            className="h-7 gap-1 px-2 text-[11.5px] text-ink-3 hover:text-ink"
             data-testid="timeline-collapse-all"
           >
             <ChevronsDownUp className="size-3.5" />
@@ -200,7 +200,7 @@ function TimelineRow({
           T+{formatOffset(offsetMs)}
         </span>
         <div className="flex min-w-0 items-center gap-2">
-          <span className="font-mono font-semibold text-[12.5px] text-ink-1">
+          <span className="font-mono font-semibold text-[12.5px] text-ink">
             {dispatch.toolName}
           </span>
           <span className="truncate text-[12.5px] text-ink-3">
@@ -313,7 +313,7 @@ function Block({
           <button
             type="button"
             onClick={handleCopy}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10.5px] text-ink-3 uppercase tracking-wide transition-colors hover:bg-card-tint hover:text-ink-1"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10.5px] text-ink-3 uppercase tracking-wide transition-colors hover:bg-card-tint hover:text-ink"
             aria-label={`Copy ${label}`}
             data-testid={`timeline-block-copy-${label}`}
           >

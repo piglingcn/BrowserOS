@@ -36,7 +36,7 @@ export function TabView({
     <div className="space-y-4">
       {(group.displayUrl || group.displayTitle) && (
         <div className="rounded-2xl border border-border-2 bg-card px-4 py-3 text-[12.5px] text-ink-3">
-          <div className="font-semibold text-ink-1">{group.label}</div>
+          <div className="font-semibold text-ink">{group.label}</div>
           {group.displayUrl && (
             <div className="truncate font-mono text-[11.5px]">
               {group.displayUrl}

@@ -5,7 +5,7 @@ export interface SidebarBrandingProps {
 }
 
 /**
- * Compact BrowserOS mark in the top of the sidebar. The deep-green square
+ * Compact BrowserOS mark in the top of the sidebar. The brand-colored square
  * with a "B" stays visible in the collapsed state; the full wordmark
  * appears as the sidebar expands. The wordmark fades rather than
  * sliding so the layout doesn't shift while the sidebar animates.

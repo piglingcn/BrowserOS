@@ -5,25 +5,17 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * BrowserClaw cockpit palette — ease-health.
- *
  * The shadcn base-vega primitives we installed all read --color-background,
- * --color-foreground, --color-primary etc. We re-point those at the
- * ease-health palette (cream #fffefc surfaces, deep-green #0f3e17 primary,
- * sage/mint tints) so shadcn Cards, Badges and Buttons sit cleanly inside
- * the cockpit. The bespoke BrowserOS tokens (bg-canvas, accent-ink, status
- * colors, etc.) live alongside as additional utility classes.
+ * --color-foreground, --color-primary etc. We re-point those at the app
+ * palette via variables so `.dark` can flip the whole system by re-declaring
+ * plain variables.
  *
  * `accent` deliberately equals `primary`: the app uses accent as the vivid
  * brand color (pulse dots, emphasis text, gradients), not as shadcn's pale
  * hover tint.
- *
- * Every color maps through a var() so the `.dark` block can flip the whole
- * palette by re-declaring the plain variables; the concrete light values
- * live in :root and the dark values in .dark.
  */
 @theme inline {
-  /* shadcn primitives: re-pointed to ease-health surfaces */
+  /* shadcn primitives: re-pointed through app palette variables */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -49,16 +41,14 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
 
-  /* BrowserOS bespoke surfaces. ink-deep is the shared dark-chrome
-     surface (terminal blocks, caption strips, viewport pills) so all
-     dark strips read as one ease-health green-black, not mixed blacks.
-     Unlike --ink (which flips to light for text), it stays a dark chip
-     in both themes — elevated in dark so it reads as raised, not lost
-     against the dark page. Carries hardcoded white text. */
+  /* BrowserOS bespoke surfaces. ink-deep and its ink-deep-2 gradient
+     partner stay dark chips in both themes, elevated in dark so they read
+     as raised, not lost against the page. They carry hardcoded white text. */
   --color-bg-canvas: var(--bg-canvas);
   --color-bg-sunken: var(--bg-sunken);
   --color-card-tint: var(--card-tint);
   --color-ink-deep: var(--ink-deep);
+  --color-ink-deep-2: var(--ink-deep-2);
   --color-border-2: var(--border-2);
   --color-border-strong: var(--border-strong);
 
@@ -68,7 +58,7 @@
   --color-ink-3: var(--ink-3);
   --color-ink-4: var(--ink-4);
 
-  /* Accent ink (high-contrast green text on tinted backgrounds) */
+  /* Accent ink (high-contrast text on tinted backgrounds) */
   --color-accent-2: var(--accent-2);
   --color-accent-ink: var(--accent-ink);
   --color-accent-tint: var(--accent-tint);
@@ -91,9 +81,9 @@
 
   /* Shadows from the design's --shadow-* tokens */
   --shadow-card:
-    0 1px 2px hsl(150 25% 10% / 0.04), 0 1px 3px hsl(150 25% 10% / 0.03);
+    0 1px 2px hsl(221 60% 20% / 0.05), 0 1px 3px hsl(221 60% 20% / 0.04);
   --shadow-pop:
-    0 8px 30px hsl(150 25% 10% / 0.14), 0 2px 8px hsl(150 25% 10% / 0.08);
+    0 8px 30px hsl(221 60% 20% / 0.14), 0 2px 8px hsl(221 60% 20% / 0.08);
 
   /* Animations referenced by JSX utilities (animate-pulse-dot, etc.) */
   --animate-pulse-dot: pulse-dot 1.4s ease-in-out infinite;
@@ -160,11 +150,7 @@ body,
 body {
   color: var(--color-foreground);
   font-family: var(--font-sans);
-  /* The design's body has a layered gradient on cream. We replicate
-     the same three layers (sage, blue-gray mist, sage-to-moss wash) so
-     the cockpit chrome reads as the design, not a flat white page.
-
-     background-attachment: fixed anchors the gradient to the viewport
+  /* background-attachment: fixed anchors the gradient to the viewport
      instead of the body box. Without it, the gradient is sized to body
      height (== viewport since `html, body { height: 100% }`) and scrolls
      away when content overflows; the user sees the gradient stop mid
@@ -173,34 +159,33 @@ body {
   background:
     radial-gradient(
       1200px 700px at 18% -8%,
-      hsl(140 30% 91%) 0%,
-      hsl(140 30% 91% / 0) 60%
+      hsl(221 100% 96%) 0%,
+      hsl(221 100% 96% / 0) 60%
     ),
     radial-gradient(
       1000px 800px at 100% 110%,
-      hsl(196 30% 92%) 0%,
-      hsl(196 30% 92% / 0) 55%
+      hsl(210 100% 97%) 0%,
+      hsl(210 100% 97% / 0) 55%
     ),
-    linear-gradient(155deg, hsl(150 20% 88%) 0%, hsl(90 20% 91%) 100%);
+    linear-gradient(155deg, hsl(220 60% 97%) 0%, hsl(210 50% 98%) 100%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Same three layers, flipped to deep green-black for dark mode. */
 .dark body {
   background:
     radial-gradient(
       1200px 700px at 18% -8%,
-      hsl(140 20% 11%) 0%,
-      hsl(140 20% 11% / 0) 60%
+      hsl(222 45% 12%) 0%,
+      hsl(222 45% 12% / 0) 60%
     ),
     radial-gradient(
       1000px 800px at 100% 110%,
-      hsl(196 22% 12%) 0%,
-      hsl(196 22% 12% / 0) 55%
+      hsl(215 40% 12%) 0%,
+      hsl(215 40% 12% / 0) 55%
     ),
-    linear-gradient(155deg, hsl(150 22% 8%) 0%, hsl(140 18% 9%) 100%);
+    linear-gradient(155deg, hsl(222 40% 7%) 0%, hsl(220 35% 9%) 100%);
   background-attachment: fixed;
 }
 
@@ -234,123 +219,124 @@ body {
  ---break---
  */
 :root {
-  --background: #fffefc;
-  --foreground: #000000;
-  --card: #fffefc;
-  --card-foreground: #000000;
-  --popover: #fffefc;
-  --popover-foreground: #000000;
-  --primary: #0f3e17;
-  --primary-foreground: #fffefc;
-  --secondary: #cfe7d3;
-  --secondary-foreground: #0f3e17;
-  --muted: #e1f4df;
-  --muted-foreground: #333333;
-  --accent: #0f3e17;
-  --accent-foreground: #fffefc;
-  --destructive: #b7301b;
-  --destructive-foreground: #fffefc;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #0f3e17;
-  --chart-1: #0f3e17;
-  --chart-2: #2d7a3a;
-  --chart-3: #6ea8b8;
-  --chart-4: #b1dbb8;
-  --chart-5: #333333;
-  --radius: 0.45rem;
-  --sidebar: #f2f8f0;
-  --sidebar-foreground: #000000;
-  --sidebar-primary: #0f3e17;
-  --sidebar-primary-foreground: #fffefc;
-  --sidebar-accent: #cfe7d3;
-  --sidebar-accent-foreground: #0f3e17;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #0f3e17;
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #25242f;
+  --card: #ffffff;
+  --card-foreground: #25242f;
+  --popover: #ffffff;
+  --popover-foreground: #25242f;
+  --primary: #0254ec;
+  --primary-foreground: #ffffff;
+  --secondary: #eaf1ff;
+  --secondary-foreground: #01123f;
+  --muted: #f1f5fb;
+  --muted-foreground: #717783;
+  --accent: #0254ec;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #dde5f0;
+  --input: #dde5f0;
+  --ring: #0254ec;
+  --chart-1: #0254ec;
+  --chart-2: #6195ff;
+  --chart-3: #fc80ff;
+  --chart-4: #b8d3ff;
+  --chart-5: #01123f;
+  --radius: 0.75rem;
+  --sidebar: #f7f9fe;
+  --sidebar-foreground: #25242f;
+  --sidebar-primary: #0254ec;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e4edff;
+  --sidebar-accent-foreground: #01123f;
+  --sidebar-border: #dde5f0;
+  --sidebar-ring: #0254ec;
 
-  --bg-canvas: #fbfdf8;
-  --bg-sunken: #ebf3ea;
-  --card-tint: #fcfefb;
-  --ink-deep: #0a1810;
-  --border-2: #dbe3dc;
-  --border-strong: #c6d1c8;
-  --ink: #000000;
-  --ink-2: #333333;
-  --ink-3: #68706a;
-  --ink-4: #99a29b;
-  --accent-2: #2d7a3a;
-  --accent-ink: #0f3e17;
-  --accent-tint: #e1f4df;
-  --accent-tint-2: #cfe7d3;
-  --green: #2d7a3a;
-  --green-tint: #d9edda;
-  --amber: hsl(35 80% 40%);
-  --amber-tint: hsl(40 75% 92%);
-  --red: #b7301b;
-  --red-tint: hsl(4 65% 95%);
-  --blue: #3e7285;
+  --bg-canvas: #f9fbff;
+  --bg-sunken: #eef3fb;
+  --card-tint: #fbfcff;
+  --ink-deep: #01123f;
+  --ink-deep-2: #0a2158;
+  --border-2: #e3e9f4;
+  --border-strong: #c7d3e8;
+  --ink: #25242f;
+  --ink-2: #4a4f5c;
+  --ink-3: #717783;
+  --ink-4: #9aa1ae;
+  --accent-2: #2f6fed;
+  --accent-ink: #0143c4;
+  --accent-tint: #e4edff;
+  --accent-tint-2: #d3e2ff;
+  --green: #16a34a;
+  --green-tint: #e6f6ec;
+  --amber: hsl(35 85% 42%);
+  --amber-tint: hsl(42 90% 94%);
+  --red: #dc2626;
+  --red-tint: hsl(0 75% 96%);
+  --blue: #0e7490;
 }
 /*
  ---break---
  */
 
-/* Dark counterpart on the ease-health green axes: deep green-black
-   surfaces, the brand green kept vivid so `text-accent`, pulse dots and
-   dropdown highlights stay legible on dark. Tints flip from "mint wash
-   on cream" to "deep green on green-black"; the ink scale inverts. */
+/* Dark theme values; the ink scale inverts, tints go from pale washes to deep washes. */
 .dark {
-  --background: #0a1810;
-  --foreground: #fffefc;
-  --card: #142919;
-  --card-foreground: #fffefc;
-  --popover: #142919;
-  --popover-foreground: #fffefc;
-  --primary: #2d7a3a;
-  --primary-foreground: #fffefc;
-  --secondary: #1f3a26;
-  --secondary-foreground: #fffefc;
-  --muted: #1f3a26;
-  --muted-foreground: #a8c4ab;
-  --accent: #4a9c56;
-  --accent-foreground: #0a1810;
-  --destructive: #e34432;
-  --destructive-foreground: #fffefc;
-  --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.12);
-  --ring: #2d7a3a;
-  --chart-1: #4a9c56;
-  --chart-2: #b1dbb8;
-  --chart-3: #b6ced5;
-  --chart-4: #cfe7d3;
-  --chart-5: #d4d4d4;
-  --sidebar: #142919;
-  --sidebar-foreground: #fffefc;
-  --sidebar-primary: #2d7a3a;
-  --sidebar-primary-foreground: #fffefc;
-  --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #fffefc;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #2d7a3a;
+  color-scheme: dark;
+  --background: #0b0f17;
+  --foreground: #e8ecf4;
+  --card: #131926;
+  --card-foreground: #e8ecf4;
+  --popover: #131926;
+  --popover-foreground: #e8ecf4;
+  --primary: #2f6fed;
+  --primary-foreground: #ffffff;
+  --secondary: #212a3d;
+  --secondary-foreground: #d5dded;
+  --muted: #171e2b;
+  --muted-foreground: #98a3b6;
+  --accent: #4d8bff;
+  --accent-foreground: #0b0f17;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #2a3446;
+  --input: #313c52;
+  --ring: #4d8bff;
+  --chart-1: #4d8bff;
+  --chart-2: #6195ff;
+  --chart-3: #fc80ff;
+  --chart-4: #8fb4ff;
+  --chart-5: #b8d3ff;
+  --sidebar: #0d1320;
+  --sidebar-foreground: #e8ecf4;
+  --sidebar-primary: #2f6fed;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #232c40;
+  --sidebar-accent-foreground: #e8ecf4;
+  --sidebar-border: #2a3446;
+  --sidebar-ring: #4d8bff;
 
-  --bg-canvas: #07120c;
-  --bg-sunken: #0f2015;
-  --card-tint: #17301e;
-  --ink-deep: #1a3020;
-  --border-2: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --ink: #fffefc;
-  --ink-2: #cdddce;
-  --ink-3: #9fb5a3;
-  --ink-4: #748a78;
-  --accent-2: #5fb06c;
-  --accent-ink: #8fce9b;
-  --accent-tint: #1f3a26;
-  --accent-tint-2: #24462e;
-  --green: #4a9c56;
-  --green-tint: #16281b;
-  --amber: hsl(38 80% 58%);
-  --amber-tint: hsl(40 40% 14%);
-  --red: #e34432;
-  --red-tint: #2c1512;
-  --blue: #6ea8b8;
+  --bg-canvas: #090d14;
+  --bg-sunken: #070b11;
+  --card-tint: #151d2e;
+  --ink-deep: #172138;
+  --ink-deep-2: #1f2c4a;
+  --border-2: #253046;
+  --border-strong: #34405c;
+  --ink: #eef2f9;
+  --ink-2: #c4cddf;
+  --ink-3: #94a0b5;
+  --ink-4: #67748c;
+  --accent-2: #6195ff;
+  --accent-ink: #8fb4ff;
+  --accent-tint: #1a2540;
+  --accent-tint-2: #223055;
+  --green: #34c26b;
+  --green-tint: #10281a;
+  --amber: hsl(38 85% 58%);
+  --amber-tint: hsl(38 45% 15%);
+  --red: #f36a5f;
+  --red-tint: #2b1414;
+  --blue: #56b8d8;
 }

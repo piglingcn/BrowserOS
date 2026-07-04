@@ -206,7 +206,7 @@ function Caption({ frame }: { frame: ReplayFrame }) {
       >
         <verb.Icon className="size-3" />
       </span>
-      <span className="truncate font-semibold text-[#e9f2ea] text-xs">
+      <span className="truncate font-semibold text-white/90 text-xs">
         {frame.caption}
       </span>
     </div>

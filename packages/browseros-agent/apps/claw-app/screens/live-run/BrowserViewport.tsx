@@ -93,9 +93,9 @@ function AgentBadge({ harness, paused }: { harness: string; paused: boolean }) {
 
 function WorkingPill({ label, onStop }: { label: string; onStop: () => void }) {
   return (
-    <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 overflow-hidden rounded-full bg-[#112624]/90 px-3 py-2 pl-4 shadow-2xl backdrop-blur">
-      <span className="block size-4 shrink-0 animate-spin rounded-full border-2 border-[#56DBC8]/30 border-t-[#56DBC8]" />
-      <span className="whitespace-nowrap font-semibold text-[#EAF6F3] text-xs">
+    <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 overflow-hidden rounded-full bg-ink-deep/90 px-3 py-2 pl-4 shadow-2xl backdrop-blur">
+      <span className="block size-4 shrink-0 animate-spin rounded-full border-2 border-[#8fb4ff]/30 border-t-[#8fb4ff]" />
+      <span className="whitespace-nowrap font-semibold text-white/90 text-xs">
         {label}
       </span>
       <button
@@ -103,7 +103,7 @@ function WorkingPill({ label, onStop }: { label: string; onStop: () => void }) {
         onClick={onStop}
         title="Stop the agent"
         aria-label="Stop the agent"
-        className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[#56DBC8]/15 text-[#7FE9D6]"
+        className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[#8fb4ff]/15 text-[#b8d3ff]"
       >
         <StopCircle className="size-3" />
       </button>

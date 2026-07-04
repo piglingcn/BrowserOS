@@ -47,7 +47,7 @@ const MOCK_AGENTS: AgentRow[] = [
     task: 'See my May invoices and file expenses on SAP Concur',
     status: 'needs-ok',
     liveLine: 'Filling 4 expense lines',
-    color: '#0f3e17',
+    color: '#0254ec',
   },
   {
     id: 'cld-li',
