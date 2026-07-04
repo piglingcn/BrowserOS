@@ -183,6 +183,61 @@ func TestStashRebaseFlagsModifyDeleteConflict(t *testing.T) {
 	}
 }
 
+func TestStashRebasePreservesRenameDeletion(t *testing.T) {
+	ctx := context.Background()
+	dir := initGitRepo(t)
+	writeFile(t, filepath.Join(dir, "old.txt"), "base\n")
+	runGit(t, dir, "add", "old.txt")
+	runGit(t, dir, "commit", "-m", "base")
+
+	runGit(t, dir, "mv", "old.txt", "new.txt")
+	sha, err := StashPush(ctx, dir, "rename", false, nil)
+	if err != nil {
+		t.Fatalf("StashPush: %v", err)
+	}
+
+	if err := StashRebase(ctx, dir, sha); err != nil {
+		t.Fatalf("StashRebase: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old.txt")); !os.IsNotExist(err) {
+		t.Fatalf("old path should be deleted after rename replay, stat err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "new.txt"))
+	if err != nil {
+		t.Fatalf("read new path: %v", err)
+	}
+	if string(data) != "base\n" {
+		t.Fatalf("new path contents = %q", string(data))
+	}
+}
+
+func TestStashRebasePreservesModeOnlyChange(t *testing.T) {
+	ctx := context.Background()
+	dir := initGitRepo(t)
+	writeFile(t, filepath.Join(dir, "tool.sh"), "#!/bin/sh\n")
+	runGit(t, dir, "add", "tool.sh")
+	runGit(t, dir, "commit", "-m", "base")
+
+	if err := os.Chmod(filepath.Join(dir, "tool.sh"), 0o755); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	sha, err := StashPush(ctx, dir, "chmod", false, nil)
+	if err != nil {
+		t.Fatalf("StashPush: %v", err)
+	}
+
+	if err := StashRebase(ctx, dir, sha); err != nil {
+		t.Fatalf("StashRebase: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "tool.sh"))
+	if err != nil {
+		t.Fatalf("stat tool: %v", err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("tool mode = %o, want 755", info.Mode().Perm())
+	}
+}
+
 func TestStashRebaseRestoresUntrackedExecutableBySHA(t *testing.T) {
 	ctx := context.Background()
 	dir := initGitRepo(t)

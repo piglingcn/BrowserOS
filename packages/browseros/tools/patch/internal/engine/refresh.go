@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -25,7 +26,10 @@ type RefreshOptions struct {
 	Remote    string
 	Force     bool
 	Pull      bool
-	Progress  Progress
+	// AutoAnnotate creates feature commits for local checkout changes that
+	// survive the refresh rebuild.
+	AutoAnnotate bool
+	Progress     Progress
 }
 
 type RefreshCommit struct {
@@ -36,16 +40,23 @@ type RefreshCommit struct {
 }
 
 type RefreshResult struct {
-	Workspace  string          `json:"workspace"`
-	Result     string          `json:"result"`
-	Features   int             `json:"features"`
-	Commits    []RefreshCommit `json:"commits"`
-	PatchesRev string          `json:"patches_rev"`
-	Warnings   []string        `json:"warnings"`
+	Workspace          string          `json:"workspace"`
+	Result             string          `json:"result"`
+	Features           int             `json:"features"`
+	Commits            []RefreshCommit `json:"commits"`
+	PatchesRev         string          `json:"patches_rev"`
+	Warnings           []string        `json:"warnings"`
+	StashRestored      bool            `json:"stash_restored,omitempty"`
+	StashConflict      bool            `json:"stash_conflict,omitempty"`
+	StashConflictFiles []string        `json:"stash_conflict_files,omitempty"`
+	AnnotationOutcome
 }
 
 // Refresh rebuilds the local browseros branch as feature commits from the patch repo.
 func Refresh(ctx context.Context, opts RefreshOptions) (*RefreshResult, error) {
+	if err := requireNoPendingResolution(ctx, opts.Workspace); err != nil {
+		return nil, err
+	}
 	repoInfo := opts.Repo
 	if opts.Remote == "" {
 		opts.Remote = "origin"
@@ -92,31 +103,64 @@ func Refresh(ctx context.Context, opts RefreshOptions) (*RefreshResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if dirty && !opts.Force {
-		return nil, fmt.Errorf("checkout %s has tracked changes; commit/stash them or use --force to reset tracked state", opts.Workspace.Name)
-	}
+	refreshStashRef := ""
+	refreshChangePaths := []string{}
 	if dirty && opts.Force {
 		reportProgress(opts.Progress, "Resetting tracked checkout changes")
 		if err := git.ResetHard(ctx, opts.Workspace.Path); err != nil {
 			return nil, err
 		}
+		dirty = false
+	}
+	stashTrackedChanges := func() error {
+		if !dirty || refreshStashRef != "" {
+			return nil
+		}
+		paths, err := trackedRefreshChangePaths(ctx, opts.Workspace.Path)
+		if err != nil {
+			return err
+		}
+		refreshChangePaths = paths
+		reportProgress(opts.Progress, "Stashing tracked checkout changes")
+		stashRef, err := git.StashPush(ctx, opts.Workspace.Path, "browseros-patch refresh stash", false, nil)
+		if err != nil {
+			return err
+		}
+		refreshStashRef = stashRef
+		return nil
+	}
+	withRefreshStashRecovery := func(err error) error {
+		if err == nil || refreshStashRef == "" {
+			return err
+		}
+		return fmt.Errorf("%w; tracked local changes are saved in stash %s", err, refreshStashRef)
+	}
+	materializeErr := func(step string, err error) error {
+		return withRefreshStashRecovery(refreshMaterializeError(step, err))
 	}
 	if fresh, err := refreshIsFresh(ctx, opts.Workspace.Path, state, repoRev); err != nil {
 		return nil, err
 	} else if fresh {
+		if err := stashTrackedChanges(); err != nil {
+			return nil, err
+		}
 		if branch != browserOSBranch {
 			if err := git.CheckoutBranch(ctx, opts.Workspace.Path, browserOSBranch); err != nil {
-				return nil, err
+				return nil, withRefreshStashRecovery(err)
 			}
 		}
-		return &RefreshResult{
+		result := &RefreshResult{
 			Workspace:  opts.Workspace.Name,
 			Result:     "fresh",
 			Features:   len(features),
 			Commits:    []RefreshCommit{},
 			PatchesRev: repoRev,
 			Warnings:   []string{},
-		}, nil
+		}
+		if err := finishRefresh(ctx, opts, repoInfo, result, refreshStashRef, refreshChangePaths, repoRev); err != nil {
+			return nil, withRefreshStashRecovery(err)
+		}
+		return result, nil
 	}
 	repoSet, err := patch.LoadRepoPatchSet(repoInfo.PatchesDir, nil)
 	if err != nil {
@@ -136,8 +180,11 @@ func Refresh(ctx context.Context, opts RefreshOptions) (*RefreshResult, error) {
 	} else if !exists {
 		return nil, fmt.Errorf("BASE_COMMIT %s is not present in checkout %s", repoInfo.BaseCommit, opts.Workspace.Path)
 	}
-	if err := git.CheckoutDetached(ctx, opts.Workspace.Path, repoInfo.BaseCommit); err != nil {
+	if err := stashTrackedChanges(); err != nil {
 		return nil, err
+	}
+	if err := git.CheckoutDetached(ctx, opts.Workspace.Path, repoInfo.BaseCommit); err != nil {
+		return nil, withRefreshStashRecovery(err)
 	}
 	result := &RefreshResult{
 		Workspace:  opts.Workspace.Name,
@@ -154,22 +201,22 @@ func Refresh(ctx context.Context, opts RefreshOptions) (*RefreshResult, error) {
 		}
 		reportProgress(opts.Progress, "Materializing feature %s", feature.Name)
 		if err := applyFeaturePatchSet(ctx, opts.Workspace.Path, repoInfo, repoSet, paths); err != nil {
-			return nil, refreshMaterializeError("apply feature "+feature.Name, err)
+			return nil, materializeErr("apply feature "+feature.Name, err)
 		}
 		stagePaths := stagePathsForPatches(repoSet, paths)
 		if err := git.AddAllPaths(ctx, opts.Workspace.Path, stagePaths); err != nil {
-			return nil, refreshMaterializeError("stage feature "+feature.Name, err)
+			return nil, materializeErr("stage feature "+feature.Name, err)
 		}
 		dirty, err := git.IsDirtyPaths(ctx, opts.Workspace.Path, stagePaths)
 		if err != nil {
-			return nil, refreshMaterializeError("check feature "+feature.Name, err)
+			return nil, materializeErr("check feature "+feature.Name, err)
 		}
 		if !dirty {
 			continue
 		}
 		commit, err := git.CommitIndexWithBodyEnv(ctx, opts.Workspace.Path, feature.Description, patchesRevTrailer+": "+repoRev, commitEnv)
 		if err != nil {
-			return nil, refreshMaterializeError("commit feature "+feature.Name, err)
+			return nil, materializeErr("commit feature "+feature.Name, err)
 		}
 		result.Commits = append(result.Commits, RefreshCommit{
 			Feature:     feature.Name,
@@ -181,7 +228,7 @@ func Refresh(ctx context.Context, opts RefreshOptions) (*RefreshResult, error) {
 	if len(result.Commits) == 0 {
 		commit, err := git.CommitIndexWithBodyEnv(ctx, opts.Workspace.Path, "chore: materialize browseros patches", patchesRevTrailer+": "+repoRev, commitEnv)
 		if err != nil {
-			return nil, refreshMaterializeError("commit empty materialization", err)
+			return nil, materializeErr("commit empty materialization", err)
 		}
 		result.Commits = append(result.Commits, RefreshCommit{
 			Feature:     "materialization",
@@ -192,18 +239,96 @@ func Refresh(ctx context.Context, opts RefreshOptions) (*RefreshResult, error) {
 	}
 	reportProgress(opts.Progress, "Moving browseros branch")
 	if err := git.ForceBranch(ctx, opts.Workspace.Path, browserOSBranch, "HEAD"); err != nil {
-		return nil, refreshMaterializeError("move browseros branch", err)
+		return nil, materializeErr("move browseros branch", err)
 	}
 	if err := git.CheckoutBranch(ctx, opts.Workspace.Path, browserOSBranch); err != nil {
-		return nil, refreshMaterializeError("checkout browseros branch", err)
+		return nil, materializeErr("checkout browseros branch", err)
 	}
 	state.BaseCommit = repoInfo.BaseCommit
 	state.LastRefreshRev = repoRev
 	state.LastRefreshAt = time.Now().UTC()
 	if err := workspace.SaveState(opts.Workspace.Path, state); err != nil {
-		return nil, err
+		return nil, withRefreshStashRecovery(err)
+	}
+	if err := finishRefresh(ctx, opts, repoInfo, result, refreshStashRef, refreshChangePaths, repoRev); err != nil {
+		return nil, withRefreshStashRecovery(err)
 	}
 	return result, nil
+}
+
+func finishRefresh(ctx context.Context, opts RefreshOptions, repoInfo *repo.Info, result *RefreshResult, refreshStashRef string, refreshChangePaths []string, repoRev string) error {
+	if refreshStashRef != "" {
+		reportProgress(opts.Progress, "Rebasing stashed local changes")
+		if err := git.StashRebase(ctx, opts.Workspace.Path, refreshStashRef); err != nil {
+			if errors.Is(err, git.ErrStashNotFound) {
+				return nil
+			}
+			var conflict *git.StashConflictError
+			if !errors.As(err, &conflict) {
+				return err
+			}
+			result.StashConflict = true
+			result.StashConflictFiles = conflict.Files
+			result.AnnotateSkipped = "local changes conflict after refresh"
+			return recordRefreshStashConflict(opts.Workspace.Path, refreshStashRef, conflict.Files)
+		}
+		result.StashRestored = true
+	}
+	if !opts.AutoAnnotate || result.StashConflict || len(refreshChangePaths) == 0 {
+		return nil
+	}
+	hasChanges, err := hasAnnotatableChanges(ctx, opts.Workspace, repoInfo, refreshChangePaths)
+	if err != nil {
+		result.AnnotateError = err.Error()
+		return nil
+	}
+	if !hasChanges {
+		return nil
+	}
+	annotateWorkspaceChanges(ctx, opts.Workspace, repoInfo, refreshChangePaths, nil, &result.AnnotationOutcome, opts.Progress, patchesRevTrailer+": "+repoRev)
+	return nil
+}
+
+func trackedRefreshChangePaths(ctx context.Context, workspacePath string) ([]string, error) {
+	changes, err := git.StatusPorcelain(ctx, workspacePath, nil)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, change := range changes {
+		if change.Status == "??" {
+			continue
+		}
+		for _, rel := range changeReportPaths(change) {
+			appendUniquePath(&paths, seen, rel)
+		}
+	}
+	slices.Sort(paths)
+	return paths, nil
+}
+
+func recordRefreshStashConflict(workspacePath string, stashRef string, files []string) error {
+	state, err := workspace.LoadState(workspacePath)
+	if err != nil {
+		return err
+	}
+	state.PendingStash = stashRef
+	state.PendingStashConflict = true
+	state.PendingStashConflictFiles = append([]string{}, files...)
+	return workspace.SaveState(workspacePath, state)
+}
+
+func hasAnnotatableChanges(ctx context.Context, ws workspace.Entry, repoInfo *repo.Info, include []string) (bool, error) {
+	ignore, err := patch.LoadIgnoreSet(repoInfo.Root, nil)
+	if err != nil {
+		return false, err
+	}
+	changes, err := annotateChanges(ctx, ws.Path, ignore, include, nil)
+	if err != nil {
+		return false, err
+	}
+	return len(changes) > 0, nil
 }
 
 func refreshMaterializeError(step string, err error) error {

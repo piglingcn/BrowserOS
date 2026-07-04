@@ -458,6 +458,20 @@ func TestSrcFlagExplainsDirectCheckoutPath(t *testing.T) {
 	}
 }
 
+func TestRefreshNoAnnotateFlagDocumentsOptOut(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"refresh"})
+	if err != nil {
+		t.Fatalf("find refresh: %v", err)
+	}
+	flag := cmd.Flags().Lookup("no-annotate")
+	if flag == nil {
+		t.Fatalf("refresh missing --no-annotate flag")
+	}
+	if !strings.Contains(flag.Usage, "annotation") {
+		t.Fatalf("refresh --no-annotate usage should explain annotation opt-out, got %q", flag.Usage)
+	}
+}
+
 func TestLLMTxtGuideContent(t *testing.T) {
 	text := llmTxtGuide()
 	for _, want := range []string{
@@ -471,8 +485,12 @@ func TestLLMTxtGuideContent(t *testing.T) {
 		"browseros-patch status ch1",
 		"browseros-patch sync ch1",
 		"browseros-patch apply ch1",
+		"browseros-patch refresh ch1",
 		"browseros-patch extract ch1",
 		"browseros-patch annotate ch1",
+		"auto-annotate local changes",
+		"--no-annotate",
+		"apply, sync, refresh, and annotate refuse",
 		"list reads only registered Chromium checkouts",
 		"does not inspect sync state",
 		// agent playbook

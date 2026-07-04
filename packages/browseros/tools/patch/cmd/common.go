@@ -54,7 +54,7 @@ Rules:
 - Checkout commands work from anywhere when passed a checkout name: browseros-patch diff ch1.
 - browseros-patch list reads only registered Chromium checkouts; it does not inspect sync state.
 - Use browseros-patch status ch1 or browseros-patch diff ch1 before mutating.
-- Mutating commands: browseros-patch sync ch1 (alias: pull), browseros-patch apply ch1, browseros-patch extract ch1, browseros-patch annotate ch1.
+- Mutating commands: browseros-patch sync ch1 (alias: pull), browseros-patch apply ch1, browseros-patch refresh ch1, browseros-patch extract ch1, browseros-patch annotate ch1.
 - Pool commands: browseros-patch refresh ch1 rebuilds the local browseros branch as feature commits from canonical patches.
 - Feature registration commands: browseros-patch feature lint validates patch ownership; browseros-patch feature add registers a newly extracted task range.
 - Every command accepts --json for machine-readable output and never prompts.
@@ -83,17 +83,19 @@ Capture flow (turn checkout changes into patches):
 
 Feature commit flow (turn checkout changes into feature commits):
 1. browseros-patch apply ch1               # auto-annotates after a conflict-free apply (--no-annotate to skip)
-2. browseros-patch annotate ch1            # standalone: commit changed files for all bos_build/features.yaml features
+2. browseros-patch refresh ch1             # rebuilds browseros, then auto-annotates local changes (--no-annotate to skip)
+3. browseros-patch annotate ch1            # standalone: commit changed files for all bos_build/features.yaml features
 Annotation rules:
 - Filtered (-- files...) and --changed applies never auto-annotate; continue/skip finish a paused apply's annotation, excluding skipped conflicts.
-- apply, sync, and annotate refuse to start while a conflict resolution is pending; finish continue/skip/abort first.
+- apply, sync, refresh, and annotate refuse to start while a conflict resolution is pending; finish continue/skip/abort first.
 - Changes no feature claims are reported as "unclaimed" and left uncommitted; claim them in bos_build/features.yaml.
 
 Pool refresh flow (rebuild browseros branch before leasing a checkout):
 1. browseros-patch status ch1 --json       # check patches_freshness
-2. browseros-patch refresh ch1             # pull patch repo, rebuild browseros from BASE_COMMIT + features
+2. browseros-patch refresh ch1             # pull patch repo, rebuild browseros from BASE_COMMIT + features, auto-annotate local changes
 3. result "fresh" means the browseros tip already carries the current Patches-Rev trailer
-4. use --force only to abandon tracked state or a task/* lease; untracked files and out/ are left alone
+4. use --no-annotate to leave restored local changes dirty instead of committing them
+5. use --force only to abandon tracked state or a task/* lease; untracked files and out/ are left alone
 
 After extracting a task branch:
 1. browseros-patch extract ch1 --range browseros..task/my-feature --squash
@@ -135,28 +137,29 @@ func ensureRepoConfigured(override string) error {
 	return nil
 }
 
-// printAnnotateOutcome renders the auto-annotate section of an apply-family
-// result: the feature-commit summary on success, a recovery hint on failure.
-func printAnnotateOutcome(ws workspace.Entry, result *engine.ApplyResult) {
-	if result.Annotate != nil {
+// printAnnotateOutcome renders the auto-annotate section of a mutating
+// command result: the feature-commit summary on success, a recovery hint on
+// failure.
+func printAnnotateOutcome(ws workspace.Entry, outcome *engine.AnnotationOutcome, completedLabel string) {
+	if outcome.Annotate != nil {
 		fmt.Println()
-		printAnnotateResult(ws, result.Annotate)
+		printAnnotateResult(ws, outcome.Annotate)
 	}
-	if result.AnnotateSkipped != "" {
-		fmt.Println(ui.Hint(fmt.Sprintf("Annotation skipped: %s.", result.AnnotateSkipped)))
+	if outcome.AnnotateSkipped != "" {
+		fmt.Println(ui.Hint(fmt.Sprintf("Annotation skipped: %s.", outcome.AnnotateSkipped)))
 	}
-	if result.AnnotateError != "" {
-		fmt.Println(ui.Warning("Patches applied, but annotate failed"))
-		fmt.Printf("  %s\n", result.AnnotateError)
+	if outcome.AnnotateError != "" {
+		fmt.Println(ui.Warning(fmt.Sprintf("%s, but annotate failed", completedLabel)))
+		fmt.Printf("  %s\n", outcome.AnnotateError)
 		fmt.Println(ui.Hint(fmt.Sprintf(`Fix the cause, then run "browseros-patch annotate %s".`, ws.Name)))
 	}
 }
 
 // annotateFailureExit maps an auto-annotate failure to exit 1 after rendering,
-// so scripts notice the missing feature commits while the apply outcome stays
-// visible in the output.
-func annotateFailureExit(result *engine.ApplyResult) error {
-	if result.AnnotateError != "" {
+// so scripts notice the missing feature commits while the main command outcome
+// stays visible in the output.
+func annotateFailureExit(outcome *engine.AnnotationOutcome) error {
+	if outcome.AnnotateError != "" {
 		return &exitCodeError{code: 1}
 	}
 	return nil

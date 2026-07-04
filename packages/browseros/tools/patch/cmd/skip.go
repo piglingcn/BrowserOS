@@ -35,12 +35,12 @@ func init() {
 						fmt.Printf("  %s\n", conflict.ChromiumPath)
 					}
 				}
-				printAnnotateOutcome(ws, result)
+				printAnnotateOutcome(ws, &result.AnnotationOutcome, "Patches applied")
 				printStashOutcome(result)
 			}); err != nil {
 				return err
 			}
-			if err := annotateFailureExit(result); err != nil {
+			if err := annotateFailureExit(&result.AnnotationOutcome); err != nil {
 				return err
 			}
 			return conflictPauseError(len(result.Conflicts) > 0 || result.StashConflict)

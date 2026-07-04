@@ -64,11 +64,11 @@ func init() {
 					}
 					fmt.Println(ui.Hint(`Run "browseros-patch continue" after fixing the current conflict.`))
 				}
-				printAnnotateOutcome(ws, result)
+				printAnnotateOutcome(ws, &result.AnnotationOutcome, "Patches applied")
 			}); err != nil {
 				return err
 			}
-			if err := annotateFailureExit(result); err != nil {
+			if err := annotateFailureExit(&result.AnnotationOutcome); err != nil {
 				return err
 			}
 			return conflictPauseError(len(result.Conflicts) > 0)

@@ -10,18 +10,23 @@ import (
 )
 
 type State struct {
-	Version        int       `yaml:"version" json:"version"`
-	Workspace      string    `yaml:"workspace,omitempty" json:"workspace,omitempty"`
-	BaseCommit     string    `yaml:"base_commit,omitempty" json:"base_commit,omitempty"`
-	LastApplyRev   string    `yaml:"last_apply_rev,omitempty" json:"last_apply_rev,omitempty"`
-	LastSyncRev    string    `yaml:"last_sync_rev,omitempty" json:"last_sync_rev,omitempty"`
-	LastExtractRev string    `yaml:"last_extract_rev,omitempty" json:"last_extract_rev,omitempty"`
-	LastRefreshRev string    `yaml:"last_refresh_rev,omitempty" json:"last_refresh_rev,omitempty"`
-	PendingStash   string    `yaml:"pending_stash,omitempty" json:"pending_stash,omitempty"`
-	LastApplyAt    time.Time `yaml:"last_apply_at,omitempty" json:"last_apply_at,omitempty"`
-	LastSyncAt     time.Time `yaml:"last_sync_at,omitempty" json:"last_sync_at,omitempty"`
-	LastExtractAt  time.Time `yaml:"last_extract_at,omitempty" json:"last_extract_at,omitempty"`
-	LastRefreshAt  time.Time `yaml:"last_refresh_at,omitempty" json:"last_refresh_at,omitempty"`
+	Version        int    `yaml:"version" json:"version"`
+	Workspace      string `yaml:"workspace,omitempty" json:"workspace,omitempty"`
+	BaseCommit     string `yaml:"base_commit,omitempty" json:"base_commit,omitempty"`
+	LastApplyRev   string `yaml:"last_apply_rev,omitempty" json:"last_apply_rev,omitempty"`
+	LastSyncRev    string `yaml:"last_sync_rev,omitempty" json:"last_sync_rev,omitempty"`
+	LastExtractRev string `yaml:"last_extract_rev,omitempty" json:"last_extract_rev,omitempty"`
+	LastRefreshRev string `yaml:"last_refresh_rev,omitempty" json:"last_refresh_rev,omitempty"`
+	PendingStash   string `yaml:"pending_stash,omitempty" json:"pending_stash,omitempty"`
+	// PendingStashConflict marks a stash replay conflict that is not
+	// represented by browseros-patch resolve state. It is cleared once the
+	// recorded stash entry is gone.
+	PendingStashConflict      bool      `yaml:"pending_stash_conflict,omitempty" json:"pending_stash_conflict,omitempty"`
+	PendingStashConflictFiles []string  `yaml:"pending_stash_conflict_files,omitempty" json:"pending_stash_conflict_files,omitempty"`
+	LastApplyAt               time.Time `yaml:"last_apply_at,omitempty" json:"last_apply_at,omitempty"`
+	LastSyncAt                time.Time `yaml:"last_sync_at,omitempty" json:"last_sync_at,omitempty"`
+	LastExtractAt             time.Time `yaml:"last_extract_at,omitempty" json:"last_extract_at,omitempty"`
+	LastRefreshAt             time.Time `yaml:"last_refresh_at,omitempty" json:"last_refresh_at,omitempty"`
 }
 
 func StateDir(workspacePath string) string {

@@ -14,12 +14,14 @@ func init() {
 	var force bool
 	var remote string
 	var noPull bool
+	var noAnnotate bool
 	command := &cobra.Command{
 		Use:         "refresh [checkout]",
 		Annotations: map[string]string{"group": "Core:"},
 		Short:       "Rebuild a checkout's browseros branch from canonical patches",
 		Example: `  browseros-patch refresh ch1
   browseros-patch refresh ch1 --force
+  browseros-patch refresh ch1 --no-annotate
   browseros-patch refresh --src /path/to/chromium/src`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -36,20 +38,23 @@ func init() {
 			err = withPatchRepoLock(cmd, info, progress, func(lockedInfo *repo.Info) error {
 				var refreshErr error
 				result, refreshErr = engine.Refresh(cmd.Context(), engine.RefreshOptions{
-					Workspace: ws,
-					Repo:      lockedInfo,
-					Remote:    remote,
-					Force:     force,
-					Pull:      !noPull,
-					Progress:  progress,
+					Workspace:    ws,
+					Repo:         lockedInfo,
+					Remote:       remote,
+					Force:        force,
+					Pull:         !noPull,
+					AutoAnnotate: !noAnnotate,
+					Progress:     progress,
 				})
 				return refreshErr
 			})
 			if err != nil {
 				return err
 			}
-			return renderResult(result, func() {
-				if result.Result == "fresh" {
+			if err := renderResult(result, func() {
+				if result.StashConflict {
+					fmt.Println(ui.Warning(fmt.Sprintf("Refresh paused for %s", ws.Name)))
+				} else if result.Result == "fresh" {
 					fmt.Println(ui.Success(fmt.Sprintf("%s is fresh", ws.Name)))
 				} else {
 					fmt.Println(ui.Title(fmt.Sprintf("Refreshed %s", ws.Name)))
@@ -66,12 +71,30 @@ func init() {
 						fmt.Printf("  %-24s %s  %d %s\n", commit.Feature, shortCommit(commit.Commit), len(commit.Files), pluralFiles(len(commit.Files)))
 					}
 				}
-			})
+				switch {
+				case result.StashRestored:
+					fmt.Println(ui.Success("Local changes rebased on top of the refreshed patches."))
+				case result.StashConflict:
+					fmt.Println(ui.Warning("Local changes conflict with the refreshed patches"))
+					for _, file := range result.StashConflictFiles {
+						fmt.Printf("  %s\n", file)
+					}
+					fmt.Println(ui.Hint(`Resolve the conflicted files (markers, or restored content for delete conflicts), then "git stash drop" in the checkout.`))
+				}
+				printAnnotateOutcome(ws, &result.AnnotationOutcome, "Refresh completed")
+			}); err != nil {
+				return err
+			}
+			if err := annotateFailureExit(&result.AnnotationOutcome); err != nil {
+				return err
+			}
+			return conflictPauseError(result.StashConflict)
 		},
 	}
 	command.Flags().StringVar(&src, "src", "", srcFlagUsage)
 	command.Flags().BoolVar(&force, "force", false, "Abandon tracked checkout state before rebuilding")
 	command.Flags().BoolVar(&noPull, "no-pull", false, "Use the local patch repo state without pulling first")
+	command.Flags().BoolVar(&noAnnotate, "no-annotate", false, "Skip feature-commit annotation after refresh")
 	command.Flags().StringVar(&remote, "remote", "origin", "Remote to pull patch repo updates from")
 	rootCmd.AddCommand(command)
 }
