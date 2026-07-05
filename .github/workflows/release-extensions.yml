@@ -1,4 +1,4 @@
-name: Release Extensions
+name: "Release: Extensions (CRX + feeds)"
 
 on:
   workflow_dispatch:

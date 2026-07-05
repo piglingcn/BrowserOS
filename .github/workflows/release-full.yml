@@ -8,7 +8,7 @@
 #   uv run browseros release appcast --version <version> --product browseros --publish
 #   uv run browseros release publish --version <version> --product browserclaw
 #   uv run browseros release appcast --version <version> --product browserclaw --publish
-name: Release Full
+name: "Release: Full (servers + browsers)"
 
 on:
   workflow_dispatch:

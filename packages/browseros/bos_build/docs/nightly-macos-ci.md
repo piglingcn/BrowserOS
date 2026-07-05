@@ -164,8 +164,9 @@ packaging, then skips the R2 resource download module for that build run.
 
 ## Manual Branch Build
 
-Open Actions, choose `Nightly macOS Build`, click `Run workflow`, select the
-branch in GitHub's native branch picker, then set inputs:
+Open Actions, choose `Nightly: macOS Browser (signed, self-hosted)`, click
+`Run workflow`, select the branch in GitHub's native branch picker, then set
+inputs:
 
 - `bump`: `offset-only`, `offset+build`, `offset+patch`, or `none`
 - `commit_version`: commit and push the bumped version files

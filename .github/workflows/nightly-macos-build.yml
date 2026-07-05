@@ -1,4 +1,4 @@
-name: Nightly macOS Build
+name: "Nightly: macOS Browser (signed, self-hosted)"
 
 on:
   schedule:

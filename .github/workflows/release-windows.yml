@@ -1,4 +1,4 @@
-name: Release Windows
+name: "Release: Windows Browser"
 
 on:
   workflow_dispatch:

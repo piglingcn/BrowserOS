@@ -1,4 +1,4 @@
-name: Nightly Release Build
+name: "Nightly: All-Platform Browser (unsigned)"
 
 # Manual UNSIGNED release builds of BrowserOS for all three platforms on
 # WarpBuild runners. The shared Chromium/WarpBuild recipe lives in

@@ -1,7 +1,7 @@
 # Required secrets for resource publishing: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
 # R2_SECRET_ACCESS_KEY, R2_BUCKET. Optional when publish_ota is true:
 # SPARKLE_PRIVATE_KEY.
-name: Release BrowserClaw Server
+name: "Release: BrowserClaw Server + Onboard"
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: Release BrowserOS Extension
+name: "Release: Agent Extension"
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: BrowserOS Chromium Build
+name: "Reusable: Chromium Browser Build"
 
 # Reusable WarpBuild job for one Chromium browser build. The Chromium checkout
 # cache is product-independent on purpose: it is captured immediately after

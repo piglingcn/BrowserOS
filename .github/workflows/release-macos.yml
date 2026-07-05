@@ -1,4 +1,4 @@
-name: Release macOS Build
+name: "Release: macOS Browser (signed, self-hosted)"
 
 on:
   workflow_dispatch:

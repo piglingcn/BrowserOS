@@ -1,4 +1,4 @@
-name: Release BrowserOS CLI
+name: "Release: CLI"
 
 on:
   push:

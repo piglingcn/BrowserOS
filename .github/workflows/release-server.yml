@@ -2,7 +2,7 @@
 # R2_SECRET_ACCESS_KEY, R2_BUCKET, BROWSEROS_CONFIG_URL, POSTHOG_API_KEY,
 # SENTRY_DSN. Optional: AGENT_RUNNER_JWT_SECRET (inlined when present),
 # SPARKLE_PRIVATE_KEY (required only when publish_ota is true).
-name: Release BrowserOS Server
+name: "Release: BrowserOS Server"
 
 on:
   push:

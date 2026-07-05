@@ -1,11 +1,12 @@
 # Nightly WarpBuild Release Builds
 
-`.github/workflows/nightly-release.yml` builds UNSIGNED release artifacts for
-Linux x64, Windows x64, and macOS arm64 every night on WarpBuild cloud
-runners, uploads them to the Actions run, and refreshes a rolling `nightly`
-prerelease on GitHub. Its per-platform build job delegates to the reusable
-Chromium build workflow in `.github/workflows/build-browseros.yml`, so the
-WarpBuild checkout/cache/build recipe is shared with the release workflows.
+`.github/workflows/nightly-release.yml` (`Nightly: All-Platform Browser
+(unsigned)`) builds UNSIGNED release artifacts for Linux x64, Windows x64, and
+macOS arm64 every night on WarpBuild cloud runners, uploads them to the Actions
+run, and refreshes a rolling `nightly` prerelease on GitHub. Its per-platform
+build job delegates to the reusable Chromium build workflow in
+`.github/workflows/build-browseros.yml`, so the WarpBuild checkout/cache/build
+recipe is shared with the release workflows.
 It complements (does not replace) the signed self-hosted macOS nightly in
 `nightly-macos-build.yml`; once signing is wired up here, that workflow can
 be retired.
@@ -77,8 +78,8 @@ leaves `queued`:
    an active account.
 
 Smoke test after changing either:
-`gh workflow run "Nightly Release Build" -f platforms=linux`, then watch
-the build job leave `queued` within ~5 minutes (`gh run watch`).
+`gh workflow run nightly-release.yml -f platforms=linux`, then watch the build
+job leave `queued` within ~5 minutes (`gh run watch`).
 
 ## Per-night pipeline (per platform)
 
@@ -180,13 +181,13 @@ the build step. To enable signing:
 
 ```bash
 # Full run on all platforms (no prerelease update):
-gh workflow run "Nightly Release Build"
+gh workflow run nightly-release.yml
 
 # One platform while iterating:
-gh workflow run "Nightly Release Build" -f platforms=linux
+gh workflow run nightly-release.yml -f platforms=linux
 
 # Manual run that also refreshes the rolling prerelease (main only):
-gh workflow run "Nightly Release Build" -f publish_nightly=true
+gh workflow run nightly-release.yml -f publish_nightly=true
 ```
 
 The first run per platform is the cache warm-up; expect cold timings. If a

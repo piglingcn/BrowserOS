@@ -1,4 +1,4 @@
-name: Release Linux
+name: "Release: Linux Browser"
 
 on:
   workflow_dispatch:

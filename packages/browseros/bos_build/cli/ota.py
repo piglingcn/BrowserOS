@@ -92,7 +92,7 @@ def server_release(
         "browseros", "--product", help="Product whose server bundle to release"
     ),
 ):
-    """Release BrowserOS Server OTA update
+    """Publish BrowserOS server OTA update
 
     Downloads server binaries from R2 (artifacts/server/latest/),
     signs them, creates Sparkle update packages, and uploads to R2.

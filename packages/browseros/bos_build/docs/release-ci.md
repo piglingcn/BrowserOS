@@ -124,8 +124,8 @@ Rules of thumb:
   can take 6 to 20 hours for all products or universal builds.
 - `preempt_nightly=true` cancels only queued or in-progress
   `.github/workflows/nightly-release.yml` runs. It does not cancel
-  `Nightly macOS Build`; the shared `macos-build` concurrency group serializes
-  self-hosted macOS work.
+  `Nightly: macOS Browser (signed, self-hosted)`; the shared `macos-build`
+  concurrency group serializes self-hosted macOS work.
 
 ## Draft GitHub Release
 
