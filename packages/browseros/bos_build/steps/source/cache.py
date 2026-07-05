@@ -115,6 +115,56 @@ def _run_pipeline(
         )
 
 
+def _run_command(
+    cmd,
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> int:
+    _log(f"$ {_format_pipeline_command(cmd, cwd)}")
+    return subprocess.run(cmd, cwd=cwd, env=env, check=False).returncode
+
+
+def _unlink_if_exists(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _restore_windows_tarball(tarball: Path, root: Path) -> None:
+    tar_file = tarball.with_suffix("")
+    try:
+        rc = _run_command(
+            [find_tool("zstd"), "-d", "-f", "-o", str(tar_file), str(tarball)]
+        )
+        if rc != 0:
+            raise SystemExit(f"[source.cache] zstd decompression failed (rc={rc})")
+
+        # Drop the compressed archive as soon as the rewindable tar exists.
+        _unlink_if_exists(tarball)
+
+        tar_cmd = [find_tool("tar"), "-xf", str(tar_file)]
+        tar_env = {**os.environ, "MSYS": "winsymlinks:nativestrict"}
+        _log("extract pass 1/2")
+        first_rc = _run_command(tar_cmd, cwd=root, env=tar_env)
+        if first_rc == 0:
+            return
+
+        _log("extract pass 1/2 failed; retrying full archive")
+        _log("extract pass 2/2")
+        second_rc = _run_command(tar_cmd, cwd=root, env=tar_env)
+        if second_rc == 0:
+            return
+
+        raise SystemExit(
+            "[source.cache] tar extraction failed after retry "
+            f"(pass1={first_rc}, pass2={second_rc})"
+        )
+    finally:
+        _unlink_if_exists(tar_file)
+
+
 def restore(key: str, root: Path) -> bool:
     """Restore the cached checkout; returns cache-hit."""
     r2 = _get_r2_client()
@@ -141,12 +191,15 @@ def restore(key: str, root: Path) -> bool:
     size_gb = tarball.stat().st_size / 1024**3
     _log(f"Downloaded {size_gb:.1f} GiB; extracting to {root}")
 
-    _run_pipeline(
-        [find_tool("zstd"), "-d", "-c", str(tarball)],
-        [find_tool("tar"), "-xf", "-"],
-        consumer_cwd=root,
-    )
-    tarball.unlink()
+    if sys.platform == "win32":
+        _restore_windows_tarball(tarball, root)
+    else:
+        _run_pipeline(
+            [find_tool("zstd"), "-d", "-c", str(tarball)],
+            [find_tool("tar"), "-xf", "-"],
+            consumer_cwd=root,
+        )
+        tarball.unlink()
     write_github_output("cache-hit", "true")
     return True
 
