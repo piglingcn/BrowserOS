@@ -735,6 +735,104 @@ features:
 	}
 }
 
+func TestAnnotateSkipsManagedGeneratedOutputs(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	for _, rel := range []string{
+		"chrome/VERSION",
+		"chrome/BROWSEROS_VERSION",
+		"chrome/app/chromium_strings.grd",
+		"chrome/app/settings_chromium_strings.grdp",
+		"chrome/app/theme/chromium/BRANDING",
+		"chrome/app/theme/chromium/not_managed.txt",
+		"chrome/app/theme/chromium/product_logo_16.png",
+		"chrome/app/theme/chromium/chromeos/chrome_app_icon_32.png",
+		"chrome/browser/browseros/server/resources/bin/browseros_server",
+		"chrome/updater/branding.gni",
+		"content/render.cc",
+	} {
+		writeFile(t, filepath.Join(workspacePath, filepath.FromSlash(rel)), "base\n")
+	}
+	runGit(t, workspacePath, "add", ".")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+
+	for _, rel := range []string{
+		"chrome/VERSION",
+		"chrome/BROWSEROS_VERSION",
+		"chrome/app/chromium_strings.grd",
+		"chrome/app/settings_chromium_strings.grdp",
+		"chrome/app/theme/chromium/BRANDING",
+		"chrome/app/theme/chromium/not_managed.txt",
+		"chrome/app/theme/chromium/product_logo_16.png",
+		"chrome/app/theme/chromium/chromeos/chrome_app_icon_32.png",
+		"chrome/browser/browseros/server/resources/bin/browseros_server",
+		"chrome/updater/branding.gni",
+		"content/render.cc",
+	} {
+		writeFile(t, filepath.Join(workspacePath, filepath.FromSlash(rel)), "changed\n")
+	}
+
+	repoInfo := newPatchRepo(t, baseCommit)
+	writeFeaturesYAML(t, repoInfo.Root, `version: "1.0"
+features:
+  browseros-core:
+    description: "chore: browseros core"
+    files:
+      - chrome/browser/core.cc
+`)
+	writeFile(t, filepath.Join(repoInfo.Root, "chromium_files", "products", "browseros", "chrome", "app", "theme", "chromium", "BRANDING.debug"), "overlay\n")
+	writeFile(t, filepath.Join(repoInfo.Root, "chromium_files", "products", "browseros", "chrome", "updater", "branding.gni"), "overlay\n")
+	writeFile(t, filepath.Join(repoInfo.Root, "resources", "browseros", "icons", "product_logo_16.png"), "icon\n")
+	writeFile(t, filepath.Join(repoInfo.Root, "bos_build", "config", "copy_resources.yaml"), `copy_operations:
+  - name: Version
+    source: resources/BROWSEROS_VERSION
+    destination: chrome/BROWSEROS_VERSION
+    type: file
+  - name: Product root icons
+    source: resources/browseros/icons/*.png
+    destination: chrome/app/theme/chromium/
+    type: files
+  - name: ChromeOS icons
+    source: resources/browseros/icons/chromeos
+    destination: chrome/app/theme/chromium/chromeos
+    type: directory
+  - name: Server resources
+    source: resources/binaries/browseros_server/darwin-arm64/resources
+    destination: chrome/browser/browseros/server/resources
+    type: directory
+`)
+	writeFile(t, filepath.Join(repoInfo.Root, "bos_build", "steps", "resources", "string_replaces.py"), `target_files = [
+    "chrome/app/chromium_strings.grd",
+    "chrome/app/settings_chromium_strings.grdp",
+]
+`)
+
+	result, err := Annotate(ctx, AnnotateOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+	})
+	if err != nil {
+		t.Fatalf("Annotate: %v", err)
+	}
+	wantUnclaimed := []string{
+		"chrome/app/theme/chromium/not_managed.txt",
+		"content/render.cc",
+	}
+	if !slices.Equal(result.Unclaimed, wantUnclaimed) {
+		t.Fatalf("expected only unmanaged files unclaimed, got %v", result.Unclaimed)
+	}
+	if result.CommitsCreated != 0 {
+		t.Fatalf("managed output filtering should not create commits, got %+v", result.Committed)
+	}
+	if status := gitOutput(t, workspacePath, "status", "--porcelain", "--", "chrome/app/theme/chromium/product_logo_16.png"); status != "M chrome/app/theme/chromium/product_logo_16.png" {
+		t.Fatalf("managed output should stay modified for build pipeline, got %q", status)
+	}
+	if status := gitOutput(t, workspacePath, "status", "--porcelain", "--", "chrome/app/theme/chromium/not_managed.txt"); status != "M chrome/app/theme/chromium/not_managed.txt" {
+		t.Fatalf("unmanaged file should stay modified, got %q", status)
+	}
+}
+
 func TestAnnotateReportsUnclaimedChanges(t *testing.T) {
 	ctx := context.Background()
 	workspacePath := initGitRepo(t)

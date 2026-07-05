@@ -74,7 +74,7 @@ func printAnnotateResult(ws workspace.Entry, result *engine.AnnotateResult) {
 		for _, rel := range result.Unclaimed {
 			fmt.Printf("  %s\n", rel)
 		}
-		fmt.Println(ui.Hint(`Claim them in bos_build/features.yaml, then re-run; "browseros-patch feature lint" checks coverage.`))
+		fmt.Println(ui.Hint(`Claim them in bos_build/features.yaml or a managed-output mechanism, then re-run; "browseros-patch feature lint" checks patch coverage.`))
 	}
 	if result.CommitsCreated == 0 {
 		fmt.Println(ui.Hint("No commits created."))

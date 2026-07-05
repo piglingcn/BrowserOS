@@ -35,8 +35,8 @@ type AnnotateResult struct {
 	FeaturesSkipped int                        `json:"features_skipped"`
 	Committed       []AnnotateCommittedFeature `json:"committed"`
 	Skipped         []AnnotateSkippedFeature   `json:"skipped"`
-	// Unclaimed lists changed files no feature owns; they stay uncommitted
-	// so the checkout remains dirty until features.yaml claims them.
+	// Unclaimed lists changed files no feature or managed-output mechanism
+	// owns; they stay uncommitted until the pipeline claims them.
 	Unclaimed []string `json:"unclaimed,omitempty"`
 }
 
@@ -82,12 +82,18 @@ func Annotate(ctx context.Context, opts AnnotateOptions) (*AnnotateResult, error
 	}
 	// One status snapshot serves the whole run; a full scan is seconds on a
 	// Chromium checkout. Each feature consumes the entries it matched —
-	// commitFeatureFiles settles them (committed, or staged clean) — so what
-	// remains at the end is exactly the unclaimed leftovers.
+	// commitFeatureFiles settles them (committed, or staged clean). Managed
+	// build outputs are filtered before feature partitioning, so what remains
+	// at the end is exactly the unclaimed leftovers.
 	changes, err := annotateChanges(ctx, opts.Workspace.Path, ignore, opts.Include, opts.Exclude)
 	if err != nil {
 		return nil, err
 	}
+	managedOutputs, err := loadManagedOutputPatterns(opts.Repo.Root)
+	if err != nil {
+		return nil, err
+	}
+	changes = filterManagedOutputChanges(changes, managedOutputs)
 	for _, feature := range features {
 		result.Processed++
 		reportProgress(opts.Progress, "Annotating feature %s", feature.Name)
@@ -135,6 +141,33 @@ func Annotate(ctx context.Context, opts AnnotateOptions) (*AnnotateResult, error
 	}
 	result.Unclaimed = uniqueReportPaths(changes)
 	return result, nil
+}
+
+func filterManagedOutputChanges(changes []git.FileChange, managedOutputs []string) []git.FileChange {
+	if len(managedOutputs) == 0 {
+		return changes
+	}
+	kept := changes[:0]
+	for _, change := range changes {
+		if annotateChangeIsManagedOutput(change, managedOutputs) {
+			continue
+		}
+		kept = append(kept, change)
+	}
+	return kept
+}
+
+func annotateChangeIsManagedOutput(change git.FileChange, managedOutputs []string) bool {
+	paths := changeReportPaths(change)
+	if len(paths) == 0 {
+		return false
+	}
+	for _, rel := range paths {
+		if !patch.PathMatches(rel, managedOutputs) {
+			return false
+		}
+	}
+	return true
 }
 
 func mappingValue(node *yaml.Node, key string) *yaml.Node {
