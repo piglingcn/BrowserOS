@@ -5,7 +5,6 @@
  */
 
 export {
-  type AgentTabsRegistry,
   agentTabs,
   createAgentTabsRegistry,
 } from './agent-tabs'

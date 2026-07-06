@@ -131,13 +131,13 @@ async fn agents_cancel(
 }
 
 async fn tabs_activity(State(state): State<AppState>) -> AppResult<Json<Value>> {
-    let profiles = state.agents.list().await?;
+    let profiles = state.agents.list_profiles().await?;
     let tabs = state.tab_activity.snapshot().await;
     let mut enriched = Vec::with_capacity(tabs.len());
     for record in tabs {
-        let profile = profiles.iter().find(|profile| {
-            profile.id == record.agent_id || profile.mcp_url.contains(&record.slug)
-        });
+        let profile = profiles
+            .iter()
+            .find(|profile| profile.id == record.agent_id);
         enriched.push(EnrichedTabRecord {
             agent_label: profile
                 .map(|profile| profile.name.clone())

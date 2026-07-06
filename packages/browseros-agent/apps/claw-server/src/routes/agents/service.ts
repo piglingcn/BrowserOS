@@ -3,66 +3,27 @@
  * Copyright 2025 BrowserOS
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
- * File-backed agent profile service. One profile per file at
- * <browserclawDir>/agents/<id>.json keyed by a nanoid;
- * the slug is the user-facing identifier and is unique across all
- * profiles. mcpUrl is recomputed from the current public MCP URL
- * on every read so a port change between boots doesn't strand the
- * stored value.
- *
- * Route handlers stay thin: they translate HTTP shape and surface
- * 404s; everything else (validation, persistence, slug resolution,
- * derivation) happens here.
+ * File-backed agent profile reader. Provisioning happens outside this
+ * server now; this service only projects stored profiles for live tabs
+ * and permission checks.
  */
 
-import { nanoid } from 'nanoid'
-import { AsyncMutex } from '../../lib/async-mutex'
 import { logger } from '../../lib/logger'
-import { toSlug, uniqueSlug } from '../../lib/slug'
-import { listFiles, readJson, removeFile, writeJson } from '../../lib/storage'
-import {
-  installForAgent,
-  reconcileHarnessLink,
-  uninstallForAgent,
-} from '../../services/harness-install'
+import { listFiles, readJson } from '../../lib/storage'
 import { publicMcpUrl } from '../../shared/mcp-url'
 import {
+  type AgentProfileDetail,
   type AgentProfileSummary,
-  type CreatedAgent,
-  type DeletedAgent,
-  type NewAgentValues,
-  type RegeneratedMcpUrl,
   type StoredAgentProfile,
   storedAgentProfileSchema,
 } from './schemas'
 
 const AGENTS_SUBDIR = 'agents'
 const TOTAL_PROFILE_LOGINS = 47
-
-/**
- * Serialises every slug-mutating operation (create / update /
- * regenerateMcpUrl) so the read-snapshot → uniqueSlug → write
- * window cannot race against itself. Reads (list / getDetail) stay
- * lock-free; concurrent writes to different ids that don't touch
- * the slug space could in principle drop the mutex too, but the cost
- * of the queue is negligible and keeping all three under the same
- * lock means the slug-uniqueness invariant holds without per-op
- * reasoning.
- */
-const slugMutex = new AsyncMutex()
-
-/**
- * `id` is always a server-generated nanoid(8). Validate it before
- * forwarding to the filesystem so a traversal-shaped value (e.g.
- * URL-encoded `..%2Fconfig`) can never reach the storage layer even
- * if a future route forwards user input directly. Nanoid's default
- * alphabet is `A-Za-z0-9_-`; we cap the length to keep the file name
- * predictable.
- */
 const ID_PATTERN = /^[A-Za-z0-9_-]+$/
 const MAX_ID_LENGTH = 64
 
-export function isValidId(id: string): boolean {
+function isValidId(id: string): boolean {
   return id.length > 0 && id.length <= MAX_ID_LENGTH && ID_PATTERN.test(id)
 }
 
@@ -70,20 +31,10 @@ function fileFor(id: string): string {
   return `${AGENTS_SUBDIR}/${id}.json`
 }
 
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
-function buildCliCommand(slug: string): string {
-  return `mcp add ${slug}`
-}
-
 /**
  * All readable stored profiles, in arbitrary order. A single corrupt
  * file is logged + skipped rather than rejecting the whole list, so
- * one bad agent json (manual edit, partial migration, half-written
- * file on a weird FS) can't brick the whole package: the directory
- * still loads and `create` can still write new profiles.
+ * one bad agent json can't brick the homepage or permission checks.
  */
 async function loadAll(): Promise<StoredAgentProfile[]> {
   const names = await listFiles(AGENTS_SUBDIR)
@@ -156,7 +107,7 @@ function summariseProfile(profile: StoredAgentProfile): AgentProfileSummary {
   }
 }
 
-function stripWizardShape(profile: StoredAgentProfile): NewAgentValues {
+function stripManagedFields(profile: StoredAgentProfile): AgentProfileDetail {
   return {
     name: profile.name,
     harness: profile.harness,
@@ -168,6 +119,7 @@ function stripWizardShape(profile: StoredAgentProfile): NewAgentValues {
   }
 }
 
+/** Returns the tab-activity projection of stored agent profiles. */
 export async function list(): Promise<AgentProfileSummary[]> {
   const profiles = await loadAll()
   return profiles
@@ -175,176 +127,10 @@ export async function list(): Promise<AgentProfileSummary[]> {
     .map((profile) => summariseProfile(profile))
 }
 
-export async function getDetail(id: string): Promise<NewAgentValues | null> {
-  const profile = await loadById(id)
-  return profile ? stripWizardShape(profile) : null
-}
-
-export async function create(input: NewAgentValues): Promise<CreatedAgent> {
-  return slugMutex.run(async () => {
-    const id = nanoid(8)
-    const existing = await loadAll()
-    const slug = uniqueSlug(
-      toSlug(input.name),
-      new Set(existing.map((p) => p.slug)),
-    )
-    const now = nowIso()
-    const profile: StoredAgentProfile = {
-      ...input,
-      id,
-      slug,
-      mcpUrl: publicMcpUrl(),
-      status: 'configured',
-      createdAt: now,
-      updatedAt: now,
-    }
-    await writeJson(fileFor(id), profile, storedAgentProfileSchema)
-    logger.info('agent profile created', {
-      id,
-      slug,
-      harness: profile.harness,
-    })
-    // Best-effort harness install. A failure here does NOT roll back
-    // the profile; the user can retry or fix the harness state and
-    // we'll attempt again on the next create. The outcome rides
-    // back in the response so the wizard can surface it.
-    const harnessInstall = await installForAgent({
-      slug: profile.slug,
-      mcpUrl: profile.mcpUrl,
-      harness: profile.harness,
-    })
-    return {
-      id,
-      name: profile.name,
-      harness: profile.harness,
-      slug,
-      mcpUrl: profile.mcpUrl,
-      cliCommand: buildCliCommand(slug),
-      harnessInstall,
-    }
-  })
-}
-
-export async function update(
+/** Returns profile settings for permission checks, excluding managed fields. */
+export async function getDetail(
   id: string,
-  input: NewAgentValues,
-): Promise<StoredAgentProfile | null> {
-  return slugMutex.run(async () => {
-    const existing = await loadById(id)
-    if (!existing) return null
-    const existingProfiles = await loadAll()
-    const nameSlug = toSlug(input.name)
-    const slug =
-      nameSlug === toSlug(existing.name)
-        ? existing.slug
-        : uniqueSlug(
-            nameSlug,
-            new Set(
-              existingProfiles
-                .filter((profile) => profile.id !== id)
-                .map((profile) => profile.slug),
-            ),
-          )
-    const next: StoredAgentProfile = {
-      ...existing,
-      ...input,
-      id,
-      slug,
-      mcpUrl: publicMcpUrl(),
-      status: existing.status,
-      createdAt: existing.createdAt,
-      updatedAt: nowIso(),
-    }
-    await writeJson(fileFor(id), next, storedAgentProfileSchema)
-    logger.info('agent profile updated', {
-      id,
-      slug: next.slug,
-      harness: next.harness,
-    })
-    // Best-effort harness reconcile: if the harness or slug rotated,
-    // wire the new entry into the new harness and drop the old one.
-    // Failures are logged inside the helpers and do NOT roll back the
-    // profile rewrite.
-    await reconcileHarnessLink({
-      before: {
-        slug: existing.slug,
-        mcpUrl: existing.mcpUrl,
-        harness: existing.harness,
-      },
-      after: { slug: next.slug, mcpUrl: next.mcpUrl, harness: next.harness },
-    })
-    return next
-  })
-}
-
-export async function remove(id: string): Promise<DeletedAgent | null> {
-  if (!isValidId(id)) return null
-  // Load the profile before we wipe it so we can issue the uninstall
-  // with the right harness + slug. A delete that races a parallel
-  // delete may find no profile here; that's the "already gone" path
-  // and we 404.
+): Promise<AgentProfileDetail | null> {
   const profile = await loadById(id)
-  if (!profile) return null
-  // Remove the file FIRST. Two concurrent deletes both observe the
-  // same profile via loadById, but only the winner's removeFile
-  // returns true; the loser exits with 404 here and never
-  // side-effects the harness. Without this order, both calls would
-  // run uninstallForAgent and the loser would still report 404.
-  const existed = await removeFile(fileFor(id))
-  if (!existed) return null
-  logger.info('agent profile deleted', {
-    id,
-    slug: profile.slug,
-    harness: profile.harness,
-  })
-  const harnessUninstall = await uninstallForAgent({
-    slug: profile.slug,
-    harness: profile.harness,
-  })
-  return { id, harnessUninstall }
-}
-
-export async function regenerateMcpUrl(
-  id: string,
-): Promise<RegeneratedMcpUrl | null> {
-  return slugMutex.run(async () => {
-    const existing = await loadById(id)
-    if (!existing) return null
-    const profiles = await loadAll()
-    const taken = new Set(
-      profiles
-        .filter((profile) => profile.id !== id)
-        .map((profile) => profile.slug),
-    )
-    // Route the whole base through toSlug so the nanoid suffix can't
-    // smuggle `_` or `-` characters into the slug; the rotated slug
-    // stays in the canonical lowercase-alphanum-with-single-hyphens
-    // shape.
-    const base = toSlug(`${existing.name} ${nanoid(6)}`)
-    const slug = uniqueSlug(base, taken)
-    const next: StoredAgentProfile = {
-      ...existing,
-      slug,
-      mcpUrl: publicMcpUrl(),
-      updatedAt: nowIso(),
-    }
-    await writeJson(fileFor(id), next, storedAgentProfileSchema)
-    logger.info('agent mcp url regenerated', {
-      id,
-      slug: next.slug,
-      previousSlug: existing.slug,
-    })
-    // Rotating still changes the harness server name even though the
-    // endpoint URL is shared; reconcile so the new slug entry replaces
-    // the old one. Harness is unchanged so only the slug pair differs.
-    await reconcileHarnessLink({
-      before: {
-        slug: existing.slug,
-        mcpUrl: existing.mcpUrl,
-        harness: existing.harness,
-      },
-      after: { slug: next.slug, mcpUrl: next.mcpUrl, harness: next.harness },
-    })
-    return { id, mcpUrl: next.mcpUrl }
-  })
+  return profile ? stripManagedFields(profile) : null
 }

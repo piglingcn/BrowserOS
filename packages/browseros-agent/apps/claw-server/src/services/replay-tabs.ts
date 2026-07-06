@@ -49,7 +49,7 @@ import {
   tabActivityRegistry,
 } from '../lib/tab-activity'
 
-export interface ReplayTab {
+interface ReplayTab {
   sessionId: string
   tabPageId: number
   url: string

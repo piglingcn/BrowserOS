@@ -38,7 +38,7 @@ const customAclRuleSchema = z.object({
   domain: z.string().min(1),
 })
 
-const newAgentValuesSchema = z.object({
+const agentProfileDetailSchema = z.object({
   name: z.string().trim().min(1),
   harness: harnessEnum,
   loginMode: loginModeEnum,
@@ -47,9 +47,9 @@ const newAgentValuesSchema = z.object({
   aclRuleIds: z.array(z.string()),
   customAclRules: z.array(customAclRuleSchema),
 })
-export type NewAgentValues = z.infer<typeof newAgentValuesSchema>
+export type AgentProfileDetail = z.infer<typeof agentProfileDetailSchema>
 
-export const storedAgentProfileSchema = newAgentValuesSchema.extend({
+export const storedAgentProfileSchema = agentProfileDetailSchema.extend({
   id: z.string(),
   slug: z.string(),
   mcpUrl: z.string(),
@@ -73,32 +73,3 @@ const agentProfileSummarySchema = z.object({
   mcpUrl: z.string(),
 })
 export type AgentProfileSummary = z.infer<typeof agentProfileSummarySchema>
-
-const harnessInstallOutcomeSchema = z.object({
-  installed: z.boolean(),
-  message: z.string(),
-  configPath: z.string().optional(),
-})
-
-const createdAgentSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  harness: harnessEnum,
-  slug: z.string(),
-  mcpUrl: z.string(),
-  cliCommand: z.string(),
-  harnessInstall: harnessInstallOutcomeSchema,
-})
-export type CreatedAgent = z.infer<typeof createdAgentSchema>
-
-const deletedAgentSchema = z.object({
-  id: z.string(),
-  harnessUninstall: harnessInstallOutcomeSchema,
-})
-export type DeletedAgent = z.infer<typeof deletedAgentSchema>
-
-const regeneratedMcpUrlSchema = z.object({
-  id: z.string(),
-  mcpUrl: z.string(),
-})
-export type RegeneratedMcpUrl = z.infer<typeof regeneratedMcpUrlSchema>

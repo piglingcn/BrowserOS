@@ -26,5 +26,3 @@ export function createSystemRoute(config: SystemRouteConfig = {}) {
     )
     .get('/system/url', (c) => c.json({ url: getLocalServerUrl() }))
 }
-
-export const systemRoute = createSystemRoute()

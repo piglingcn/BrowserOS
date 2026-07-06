@@ -16,13 +16,6 @@ const siteRuleActionEnum = z.enum([
 ])
 export type SiteRuleAction = z.infer<typeof siteRuleActionEnum>
 
-const addSiteRuleSchema = z.object({
-  label: z.string().trim().min(1),
-  domain: z.string().trim().min(1),
-  action: siteRuleActionEnum,
-})
-export type AddSiteRuleVariables = z.infer<typeof addSiteRuleSchema>
-
 const siteRuleSchema = z.object({
   id: z.string(),
   label: z.string().min(1),

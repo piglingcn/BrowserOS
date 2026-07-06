@@ -15,14 +15,7 @@
  * so a stray join doesn't accidentally escape.
  */
 
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, normalize, sep } from 'node:path'
 import type { ZodType } from 'zod'
 import { resolveClawServerPath } from './browserclaw-dir'
@@ -129,17 +122,6 @@ export async function writeJson<T>(
   await rename(tmp, abs)
 }
 
-export async function removeFile(relPath: string): Promise<boolean> {
-  guardRelativePath(relPath)
-  try {
-    await rm(resolveClawServerPath(relPath))
-    return true
-  } catch (err) {
-    if (isFsError(err, 'ENOENT')) return false
-    throw err
-  }
-}
-
 /**
  * Returns file names (not paths) in the directory, filtered to
  * `.json` by default. Missing directories resolve to `[]` rather than
@@ -160,17 +142,6 @@ export async function listFiles(
       .map((entry) => entry.name)
   } catch (err) {
     if (isFsError(err, 'ENOENT')) return []
-    throw err
-  }
-}
-
-export async function fileExists(relPath: string): Promise<boolean> {
-  guardRelativePath(relPath)
-  try {
-    await readFile(resolveClawServerPath(relPath), 'utf8')
-    return true
-  } catch (err) {
-    if (isFsError(err, 'ENOENT')) return false
     throw err
   }
 }

@@ -26,9 +26,9 @@ import { dirname } from 'node:path'
 import { resolveClawServerPath } from '../lib/browserclaw-dir'
 import { logger } from '../lib/logger'
 
-export const REPLAY_DIR_NAME = 'replays'
-export const MAX_OPEN_HANDLES = 50
-export const IDLE_HANDLE_MS = 30_000
+const REPLAY_DIR_NAME = 'replays'
+const MAX_OPEN_HANDLES = 50
+const IDLE_HANDLE_MS = 30_000
 
 export interface ReplayMetadata {
   hasData: boolean

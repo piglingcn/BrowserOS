@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
 const AGENTS_SUBDIR: &str = "agents";
-const TOTAL_PROFILE_LOGINS: usize = 47;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Harness {
@@ -148,35 +147,15 @@ pub struct StoredAgentProfile {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentProfileSummary {
-    pub id: String,
-    pub name: String,
-    pub harness: Harness,
-    pub login_scope_label: String,
-    pub login_count: usize,
-    pub acl_rule_count: usize,
-    pub blocked_action_count: usize,
-    pub always_allow_count: usize,
-    pub last_run_at: String,
-    pub status: ProfileStatus,
-    pub mcp_url: String,
-}
-
 #[derive(Clone)]
 pub struct AgentService {
     store: JsonStore,
-    public_mcp_url: String,
 }
 
 impl AgentService {
     #[must_use]
-    pub fn new(store: JsonStore, public_mcp_url: String) -> Self {
-        Self {
-            store,
-            public_mcp_url,
-        }
+    pub fn new(store: JsonStore) -> Self {
+        Self { store }
     }
 
     pub async fn list_profiles(&self) -> AppResult<Vec<StoredAgentProfile>> {
@@ -194,15 +173,6 @@ impl AgentService {
         Ok(out)
     }
 
-    pub async fn list(&self) -> AppResult<Vec<AgentProfileSummary>> {
-        let mut profiles = self.list_profiles().await?;
-        profiles.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        Ok(profiles
-            .iter()
-            .map(|profile| self.summarize(profile))
-            .collect())
-    }
-
     pub async fn load_by_id(&self, id: &str) -> AppResult<Option<StoredAgentProfile>> {
         if !is_valid_id(id) {
             return Ok(None);
@@ -212,36 +182,6 @@ impl AgentService {
             Ok(profile) => Ok(Some(profile)),
             Err(AppError::StorageNotFound(_)) | Err(AppError::InvalidStoragePath(_)) => Ok(None),
             Err(err) => Err(err),
-        }
-    }
-
-    fn summarize(&self, profile: &StoredAgentProfile) -> AgentProfileSummary {
-        let blocked_action_count = profile
-            .approvals
-            .values()
-            .filter(|value| matches!(value, ApprovalVerdict::Block))
-            .count();
-        let login_count = match profile.login_mode {
-            LoginMode::Selective => profile.selected_sites.len(),
-            LoginMode::Profile | LoginMode::All => TOTAL_PROFILE_LOGINS,
-        };
-        let login_scope_label = match profile.login_mode {
-            LoginMode::Selective => format!("Selective ({})", profile.selected_sites.len()),
-            LoginMode::All => format!("All my logins ({TOTAL_PROFILE_LOGINS})"),
-            LoginMode::Profile => format!("Current profile ({TOTAL_PROFILE_LOGINS})"),
-        };
-        AgentProfileSummary {
-            id: profile.id.clone(),
-            name: profile.name.clone(),
-            harness: profile.harness,
-            login_scope_label,
-            login_count,
-            acl_rule_count: profile.acl_rule_ids.len(),
-            blocked_action_count,
-            always_allow_count: 0,
-            last_run_at: "Never run".to_string(),
-            status: profile.status,
-            mcp_url: self.public_mcp_url.clone(),
         }
     }
 }

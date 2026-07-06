@@ -5,36 +5,13 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { env } from '../../src/env'
 import { setMcpManagerForTesting } from '../../src/lib/mcp-manager'
-import type { NewAgentValues } from '../../src/routes/agents/schemas'
-import * as agents from '../../src/routes/agents/service'
 import {
   installForAgent,
   uninstallForAgent,
 } from '../../src/services/harness-install'
 import { createStubMcpManager } from '../_helpers/stub-mcp-manager'
 import { withTempBrowserClawDir } from '../_helpers/temp-browserclaw-dir'
-
-function makeInput(overrides: Partial<NewAgentValues> = {}): NewAgentValues {
-  return {
-    name: 'Install Smoke',
-    harness: 'Claude Desktop',
-    loginMode: 'profile',
-    selectedSites: [],
-    approvals: {
-      submit: 'Ask',
-      payment: 'Block',
-      delete: 'Ask',
-      upload: 'Ask',
-      navigate: 'Auto',
-      input: 'Auto',
-    },
-    aclRuleIds: [],
-    customAclRules: [],
-    ...overrides,
-  }
-}
 
 describe('harness install service', () => {
   test('installForAgent on Claude Desktop wraps the URL in npx mcp-remote (stdio-only parser)', async () => {
@@ -45,23 +22,27 @@ describe('harness install service', () => {
     await withTempBrowserClawDir(async () => {
       const stub = createStubMcpManager()
       setMcpManagerForTesting(stub)
-      const created = await agents.create(makeInput())
+      const outcome = await installForAgent({
+        slug: 'install-smoke',
+        mcpUrl: 'http://127.0.0.1:9200/mcp',
+        harness: 'Claude Desktop',
+      })
       const addCall = stub.calls.find((c) => c.method === 'add')
       const linkCall = stub.calls.find((c) => c.method === 'link')
       expect(addCall?.payload).toMatchObject({
-        name: created.slug,
+        name: 'install-smoke',
         spec: {
           transport: 'stdio',
           command: 'npx',
-          args: ['mcp-remote', created.mcpUrl],
+          args: ['mcp-remote', 'http://127.0.0.1:9200/mcp'],
         },
       })
       expect(linkCall?.payload).toMatchObject({
-        serverName: created.slug,
+        serverName: 'install-smoke',
         agent: 'claude-desktop',
       })
-      expect(created.harnessInstall.installed).toBe(true)
-      expect(created.harnessInstall.message).toContain('Claude Desktop')
+      expect(outcome.installed).toBe(true)
+      expect(outcome.message).toContain('Claude Desktop')
     })
   })
 
@@ -132,129 +113,6 @@ describe('harness install service', () => {
       expect(outcome.installed).toBe(false)
       expect(outcome.message).toContain('Claude Desktop')
       expect(outcome.message).toContain('disk full')
-    })
-  })
-
-  test('update with a slug rotation re-links the new slug then unlinks the old one', async () => {
-    await withTempBrowserClawDir(async () => {
-      const stub = createStubMcpManager()
-      setMcpManagerForTesting(stub)
-      const created = await agents.create(makeInput({ name: 'Original Name' }))
-      // Drop the create calls so the assertion below only sees the reconcile.
-      stub.reset()
-      await agents.update(created.id, makeInput({ name: 'Renamed Profile' }))
-      const order = stub.calls.map((c) => ({
-        method: c.method,
-        name:
-          (c.payload as { name?: string; serverName?: string }).name ??
-          (c.payload as { serverName?: string }).serverName,
-      }))
-      const addIdx = order.findIndex(
-        (o) => o.method === 'add' && o.name === 'renamed-profile',
-      )
-      const linkIdx = order.findIndex(
-        (o) => o.method === 'link' && o.name === 'renamed-profile',
-      )
-      const unlinkIdx = order.findIndex(
-        (o) => o.method === 'unlink' && o.name === 'original-name',
-      )
-      const removeIdx = order.findIndex(
-        (o) => o.method === 'remove' && o.name === 'original-name',
-      )
-      expect(addIdx).toBeGreaterThanOrEqual(0)
-      expect(linkIdx).toBeGreaterThan(addIdx)
-      expect(unlinkIdx).toBeGreaterThan(linkIdx)
-      expect(removeIdx).toBeGreaterThan(unlinkIdx)
-    })
-  })
-
-  test('update with a harness change writes the new harness and unlinks the old one', async () => {
-    await withTempBrowserClawDir(async () => {
-      const stub = createStubMcpManager()
-      setMcpManagerForTesting(stub)
-      const created = await agents.create(
-        makeInput({ name: 'Stable Name', harness: 'Claude Code' }),
-      )
-      stub.reset()
-      await agents.update(
-        created.id,
-        makeInput({ name: 'Stable Name', harness: 'Cursor' }),
-      )
-      const linkCall = stub.calls.find((c) => c.method === 'link')
-      const unlinkCall = stub.calls.find((c) => c.method === 'unlink')
-      expect(linkCall?.payload).toMatchObject({ agent: 'cursor' })
-      expect(unlinkCall?.payload).toMatchObject({ agent: 'claude-code' })
-    })
-  })
-
-  test('update with no harness or slug change skips the reconcile entirely', async () => {
-    await withTempBrowserClawDir(async () => {
-      const stub = createStubMcpManager()
-      setMcpManagerForTesting(stub)
-      const created = await agents.create(makeInput({ name: 'Same' }))
-      stub.reset()
-      // Mutate something irrelevant to the harness link (approvals).
-      await agents.update(created.id, {
-        ...makeInput({ name: 'Same' }),
-        approvals: {
-          submit: 'Block',
-          payment: 'Block',
-          delete: 'Block',
-          upload: 'Block',
-          navigate: 'Block',
-          input: 'Block',
-        },
-      })
-      expect(stub.calls).toEqual([])
-      void created
-    })
-  })
-
-  test('update with only an MCP URL change re-links the existing slug', async () => {
-    await withTempBrowserClawDir(async () => {
-      const previousProxyPort = env.proxyPort
-      const stub = createStubMcpManager()
-      setMcpManagerForTesting(stub)
-      const created = await agents.create(makeInput({ name: 'Same Url Drift' }))
-      stub.reset()
-      env.proxyPort = 9512
-      stub.listLinks = async () => {
-        stub.calls.push({
-          method: 'listLinks',
-          payload: { serverNames: [created.slug] },
-        })
-        return [
-          {
-            serverName: created.slug,
-            agent: 'claude-desktop',
-            configPath: '/tmp/stub-claude-desktop.json',
-          },
-        ]
-      }
-      try {
-        await agents.update(created.id, makeInput({ name: 'Same Url Drift' }))
-      } finally {
-        env.proxyPort = previousProxyPort
-      }
-      expect(stub.calls.map((c) => c.method)).toEqual([
-        'listLinks',
-        'listServers',
-        'add',
-        'unlink',
-        'link',
-      ])
-      const add = stub.calls.find((c) => c.method === 'add')
-      expect(add?.payload).toMatchObject({
-        name: created.slug,
-        spec: {
-          command: 'npx',
-          args: ['mcp-remote', 'http://127.0.0.1:9512/mcp'],
-        },
-      })
-      const link = stub.calls.find((c) => c.method === 'link')
-      expect(link?.payload).toMatchObject({
-        configPath: '/tmp/stub-claude-desktop.json',
-      })
     })
   })
 
@@ -330,29 +188,6 @@ describe('harness install service', () => {
         serverName: 'existing',
         agent: 'claude-desktop',
         configPath: '/tmp/stub-claude-desktop.json',
-      })
-    })
-  })
-
-  test('regenerateMcpUrl re-links the new slug and unlinks the old one', async () => {
-    await withTempBrowserClawDir(async () => {
-      const stub = createStubMcpManager()
-      setMcpManagerForTesting(stub)
-      const created = await agents.create(makeInput({ name: 'Rotate Me' }))
-      stub.reset()
-      const rotated = await agents.regenerateMcpUrl(created.id)
-      expect(rotated).not.toBeNull()
-      const linkCall = stub.calls.find((c) => c.method === 'link')
-      const unlinkCall = stub.calls.find((c) => c.method === 'unlink')
-      const linkedServerName = (
-        linkCall?.payload as { serverName?: string } | undefined
-      )?.serverName
-      expect(linkedServerName).toMatch(/^rotate-me-[a-z0-9-]+$/)
-      expect(linkedServerName).not.toBe(created.slug)
-      expect(linkCall?.payload).toMatchObject({ agent: 'claude-desktop' })
-      expect(unlinkCall?.payload).toMatchObject({
-        serverName: created.slug,
-        agent: 'claude-desktop',
       })
     })
   })

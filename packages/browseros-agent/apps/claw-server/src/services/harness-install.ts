@@ -105,30 +105,6 @@ export async function uninstallForAgent(
   }
 }
 
-/**
- * Keeps the harness MCP entry aligned after profile slug, harness, or
- * URL changes.
- */
-export async function reconcileHarnessLink(input: {
-  before: Pick<StoredAgentProfile, 'slug' | 'mcpUrl' | 'harness'>
-  after: Pick<StoredAgentProfile, 'slug' | 'mcpUrl' | 'harness'>
-}): Promise<{
-  install: InstallOutcome | null
-  uninstall: InstallOutcome | null
-}> {
-  const { before, after } = input
-  const harnessChanged = before.harness !== after.harness
-  const slugChanged = before.slug !== after.slug
-  const urlChanged = before.mcpUrl !== after.mcpUrl
-  if (!harnessChanged && !slugChanged && !urlChanged) {
-    return { install: null, uninstall: null }
-  }
-  const install = await installForAgent(after)
-  const uninstall =
-    harnessChanged || slugChanged ? await uninstallForAgent(before) : null
-  return { install, uninstall }
-}
-
 function failure(err: unknown, harness: Harness): InstallOutcome {
   if (err instanceof ForeignEntryError) {
     logger.warn('harness entry exists but was not written by us', {

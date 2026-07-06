@@ -13,9 +13,9 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { hc } from 'hono/client'
 import { setBrowserSession } from '../../../src/lib/browser-session'
 import { tabActivityRegistry } from '../../../src/lib/tab-activity'
-import { create as createAgent } from '../../../src/routes/agents/service'
 import app, { type AppType } from '../../../src/server'
 import { screencastCache } from '../../../src/services/screencast-cache'
+import { writeAgentProfile } from '../../_helpers/agent-profile'
 import { withTempBrowserClawDir } from '../../_helpers/temp-browserclaw-dir'
 
 function client() {
@@ -61,7 +61,7 @@ describe('/tabs/activity route', () => {
     await withTempBrowserClawDir(async () => {
       // Seed a real agent profile on disk so the route's join finds
       // a label + harness instead of falling back.
-      const agent = await createAgent({
+      const agent = await writeAgentProfile({
         name: 'Finance Ops',
         harness: 'Claude Code',
         loginMode: 'profile',

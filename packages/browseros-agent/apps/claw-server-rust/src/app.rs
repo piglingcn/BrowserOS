@@ -58,7 +58,7 @@ impl AppState {
             config.claw_dir.join("mcp-manager"),
             home_dir,
         ));
-        let agents = Arc::new(AgentService::new(store.clone(), config.public_mcp_url()));
+        let agents = Arc::new(AgentService::new(store.clone()));
         let sessions = SessionRegistry::new(
             audit.clone(),
             replay.clone(),

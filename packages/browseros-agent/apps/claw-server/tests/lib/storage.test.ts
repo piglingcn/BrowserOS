@@ -11,10 +11,8 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import {
   ensureDir,
-  fileExists,
   listFiles,
   readJson,
-  removeFile,
   StorageCorruptError,
   StorageInvalidPathError,
   StorageNotFoundError,
@@ -100,20 +98,6 @@ describe('storage', () => {
     })
   })
 
-  test('removeFile deletes an existing file and returns true', async () => {
-    await withTempBrowserClawDir(async () => {
-      await writeJson('to-delete.json', { name: 'd', ok: true }, sampleSchema)
-      expect(await removeFile('to-delete.json')).toBe(true)
-      expect(await fileExists('to-delete.json')).toBe(false)
-    })
-  })
-
-  test('removeFile returns false when the file does not exist', async () => {
-    await withTempBrowserClawDir(async () => {
-      expect(await removeFile('never-existed.json')).toBe(false)
-    })
-  })
-
   test('listFiles defaults to .json and filters non-matching entries', async () => {
     await withTempBrowserClawDir(async (dir) => {
       const root = join(dir, 'list-test')
@@ -165,9 +149,6 @@ describe('storage', () => {
           sampleSchema,
         ),
       ).toThrow(StorageInvalidPathError)
-      expect(() => removeFile('agents/../config.json')).toThrow(
-        StorageInvalidPathError,
-      )
     })
   })
 })

@@ -3,7 +3,11 @@ use axum::{
     body::{Body, to_bytes},
     http::{HeaderMap, Request, StatusCode, header},
 };
-use claw_server_rust::{AppState, build_router, config::Config, domain::SessionId};
+use browseros_core::TargetId;
+use claw_server_rust::{
+    AppState, build_router, config::Config, domain::SessionId,
+    services::tab_activity::RecordToolInput,
+};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
@@ -400,6 +404,78 @@ async fn cancel_endpoint_aborts_in_flight_dispatch() -> anyhow::Result<()> {
         "cockpit.operator-cancelled"
     );
     drop(mock);
+    Ok(())
+}
+
+#[tokio::test]
+async fn tabs_activity_enriches_by_agent_id_only() -> anyhow::Result<()> {
+    let app = test_app().await?;
+    let agents_dir = app.state.config.claw_dir.join("agents");
+    tokio::fs::create_dir_all(&agents_dir).await?;
+    tokio::fs::write(
+        agents_dir.join("stored-agent.json"),
+        json!({
+            "id": "stored-agent",
+            "name": "Stored Agent",
+            "harness": "Codex",
+            "loginMode": "profile",
+            "selectedSites": [],
+            "approvals": {},
+            "aclRuleIds": [],
+            "customAclRules": [],
+            "slug": "mcp",
+            "mcpUrl": "http://127.0.0.1:9200/mcp",
+            "status": "configured",
+            "createdAt": "now",
+            "updatedAt": "now"
+        })
+        .to_string(),
+    )
+    .await?;
+
+    app.state
+        .tab_activity
+        .record_tool(RecordToolInput {
+            target_id: TargetId::from("target-exact".to_string()),
+            page_id: 1,
+            url: "https://example.com/exact".to_string(),
+            title: "Exact".to_string(),
+            agent_id: "stored-agent".to_string(),
+            slug: "mcp".to_string(),
+            tool_name: "tabs".to_string(),
+        })
+        .await;
+    app.state
+        .tab_activity
+        .record_tool(RecordToolInput {
+            target_id: TargetId::from("target-fallback".to_string()),
+            page_id: 2,
+            url: "https://example.com/fallback".to_string(),
+            title: "Fallback".to_string(),
+            agent_id: "ephemeral-agent".to_string(),
+            slug: "mcp".to_string(),
+            tool_name: "tabs".to_string(),
+        })
+        .await;
+
+    let (status, body) = request_json(&app.router, "GET", "/tabs/activity", None).await?;
+    assert_eq!(status, StatusCode::OK);
+    let rows = body["tabs"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("tabs not array"))?;
+    let exact = rows
+        .iter()
+        .find(|row| row["targetId"] == "target-exact")
+        .ok_or_else(|| anyhow::anyhow!("missing exact tab"))?;
+    assert_eq!(exact["agentLabel"], "Stored Agent");
+    assert_eq!(exact["harness"], "Codex");
+
+    let fallback = rows
+        .iter()
+        .find(|row| row["targetId"] == "target-fallback")
+        .ok_or_else(|| anyhow::anyhow!("missing fallback tab"))?;
+    assert_eq!(fallback["agentLabel"], "mcp");
+    assert!(fallback["harness"].is_null());
     Ok(())
 }
 

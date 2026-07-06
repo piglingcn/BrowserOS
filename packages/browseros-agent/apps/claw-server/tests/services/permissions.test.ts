@@ -9,13 +9,15 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import type { NewAgentValues } from '../../src/routes/agents/schemas'
-import * as agentsService from '../../src/routes/agents/service'
-import * as siteRulesService from '../../src/routes/site-rules/service'
+import type { StoredAgentProfile } from '../../src/routes/agents/schemas'
 import * as permissions from '../../src/services/permissions'
+import { writeAgentProfile } from '../_helpers/agent-profile'
+import { writeSiteRules } from '../_helpers/site-rules'
 import { withTempBrowserClawDir } from '../_helpers/temp-browserclaw-dir'
 
-function makeProfile(overrides: Partial<NewAgentValues> = {}): NewAgentValues {
+function makeProfile(
+  overrides: Partial<StoredAgentProfile> = {},
+): Partial<StoredAgentProfile> {
   return {
     name: 'Cowork . Finance ops',
     harness: 'Claude Desktop',
@@ -38,12 +40,14 @@ function makeProfile(overrides: Partial<NewAgentValues> = {}): NewAgentValues {
 describe('permissions.check', () => {
   test('site rule clamps an agent that wanted Auto', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(makeProfile())
-      await siteRulesService.add({
-        label: 'Wire',
-        domain: 'mercury.com',
-        action: 'payments',
-      })
+      const agent = await writeAgentProfile(makeProfile())
+      await writeSiteRules([
+        {
+          label: 'Wire',
+          domain: 'mercury.com',
+          action: 'payments',
+        },
+      ])
       const result = await permissions.check({
         agentId: agent.id,
         verb: 'payment',
@@ -58,7 +62,7 @@ describe('permissions.check', () => {
 
   test('site rule overrides an agent Auto verdict for submit', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(
+      const agent = await writeAgentProfile(
         makeProfile({
           approvals: {
             submit: 'Auto',
@@ -70,11 +74,13 @@ describe('permissions.check', () => {
           },
         }),
       )
-      await siteRulesService.add({
-        label: 'Concur',
-        domain: 'concur.com',
-        action: 'submit',
-      })
+      await writeSiteRules([
+        {
+          label: 'Concur',
+          domain: 'concur.com',
+          action: 'submit',
+        },
+      ])
       const blocked = await permissions.check({
         agentId: agent.id,
         verb: 'submit',
@@ -94,12 +100,14 @@ describe('permissions.check', () => {
 
   test('site rule with wildcard matches subdomains', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(makeProfile())
-      await siteRulesService.add({
-        label: 'Stripe',
-        domain: '*.stripe.com',
-        action: 'payments',
-      })
+      const agent = await writeAgentProfile(makeProfile())
+      await writeSiteRules([
+        {
+          label: 'Stripe',
+          domain: '*.stripe.com',
+          action: 'payments',
+        },
+      ])
       const sub = await permissions.check({
         agentId: agent.id,
         verb: 'payment',
@@ -119,7 +127,7 @@ describe('permissions.check', () => {
 
   test('agent verdict wins when no site rule matches', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(makeProfile())
+      const agent = await writeAgentProfile(makeProfile())
       const result = await permissions.check({
         agentId: agent.id,
         verb: 'submit',
@@ -145,7 +153,7 @@ describe('permissions.check', () => {
 
   test('catalog default applies when the agent profile omits the verb', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(
+      const agent = await writeAgentProfile(
         makeProfile({
           approvals: {
             submit: 'Auto',
@@ -171,7 +179,7 @@ describe('permissions.check', () => {
 
   test('unknown verb returns block from the permission-default source', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(makeProfile())
+      const agent = await writeAgentProfile(makeProfile())
       const result = await permissions.check({
         agentId: agent.id,
         verb: 'not-a-real-verb',
@@ -198,12 +206,14 @@ describe('permissions.check', () => {
 
   test('admin verb is enforced by matching site rules', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(makeProfile())
-      await siteRulesService.add({
-        label: 'Org billing',
-        domain: 'admin.*',
-        action: 'admin',
-      })
+      const agent = await writeAgentProfile(makeProfile())
+      await writeSiteRules([
+        {
+          label: 'Org billing',
+          domain: 'admin.*',
+          action: 'admin',
+        },
+      ])
       // Configured admin rule must attribute the block to the rule,
       // not to the unknown-verb safety default. If this regresses,
       // the cockpit will show "blocked by default" instead of
@@ -232,14 +242,16 @@ describe('permissions.check', () => {
 
   test('input verb is not domain-scoped: site rules do not clamp it', async () => {
     await withTempBrowserClawDir(async () => {
-      const agent = await agentsService.create(makeProfile())
+      const agent = await writeAgentProfile(makeProfile())
       // A submit rule on the same domain must NOT carry over to the
       // input verb space; input falls through to the agent verdict.
-      await siteRulesService.add({
-        label: 'Concur submit',
-        domain: 'concur.com',
-        action: 'submit',
-      })
+      await writeSiteRules([
+        {
+          label: 'Concur submit',
+          domain: 'concur.com',
+          action: 'submit',
+        },
+      ])
       const result = await permissions.check({
         agentId: agent.id,
         verb: 'input',
