@@ -6,7 +6,7 @@
  * Integration tests for the /agents routes. Hits the live Hono app
  * via the typed client (`hc<AppType>`) but routes everything through
  * `app.fetch` so there is no real socket bind. Each test gets its
- * own tmp `<browserclawDir>` so state doesn't leak between cases.
+ * own tmp `<browserosDir>` so state doesn't leak between cases.
  */
 
 import { describe, expect, test } from 'bun:test'
@@ -17,7 +17,7 @@ import type {
   StoredAgentProfile,
 } from '../../../src/routes/agents/schemas'
 import app, { type AppType } from '../../../src/server'
-import { withTempBrowserClawDir } from '../../_helpers/temp-browserclaw-dir'
+import { withTempBrowserosDir } from '../../_helpers/temp-browseros-dir'
 
 function client() {
   // hc only needs a base URL to construct request paths; the fetch
@@ -49,7 +49,7 @@ function makeBody(overrides: Partial<NewAgentValues> = {}): NewAgentValues {
 
 describe('/agents routes', () => {
   test('full lifecycle: create → list → detail → update → regenerate → delete', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
 
       // create
@@ -115,7 +115,7 @@ describe('/agents routes', () => {
   })
 
   test('404 paths for unknown ids', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const detail = await api.agents[':id'].$get({ param: { id: 'ghost' } })
       expect(detail.status).toBe(404)
@@ -134,7 +134,7 @@ describe('/agents routes', () => {
   })
 
   test('400 when the create body fails zod validation', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const res = await api.agents.$post({
         // biome-ignore lint/suspicious/noExplicitAny: deliberate invalid body for the test
@@ -145,7 +145,7 @@ describe('/agents routes', () => {
   })
 
   test('two creates with the same name produce slug + slug-2', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const first = await api.agents.$post({ json: makeBody({ name: 'Foo' }) })
       const second = await api.agents.$post({ json: makeBody({ name: 'Foo' }) })
@@ -157,7 +157,7 @@ describe('/agents routes', () => {
   })
 
   test('parallel updates of two distinct profiles do not corrupt each other', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const a = await (
         await api.agents.$post({ json: makeBody({ name: 'A' }) })

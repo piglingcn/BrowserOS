@@ -15,7 +15,7 @@ import app from '../../../src/server'
 import { recordToolDispatch } from '../../../src/services/audit-log'
 import { screenshotPath } from '../../../src/services/screenshots'
 import { recordSessionEnd } from '../../../src/services/session-events'
-import { withTempBrowserClawDir } from '../../_helpers/temp-browserclaw-dir'
+import { withTempBrowserosDir } from '../../_helpers/temp-browseros-dir'
 
 function seedScreenshotFile(dispatchId: number | null | undefined): void {
   if (typeof dispatchId !== 'number') return
@@ -90,7 +90,7 @@ describe('GET /audit/tasks/:sessionId', () => {
   })
 
   it('returns the full task detail', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       seed('detail-1', 'tabs', 'https://e.com')
       const screenshotId = seed('detail-1', 'screenshot')
       // Simulate persistScreenshot's fire-and-forget disk write; the

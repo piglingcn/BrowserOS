@@ -6,14 +6,14 @@
  * Integration tests for the /site-rules routes. Hits the live Hono
  * app via the typed client (`hc<AppType>`), routes through
  * `app.fetch` so no real socket bind, and isolates each test with a
- * fresh `<browserclawDir>`.
+ * fresh `<browserosDir>`.
  */
 
 import { describe, expect, test } from 'bun:test'
 import { hc } from 'hono/client'
 import type { SiteRule } from '../../../src/routes/site-rules/schemas'
 import app, { type AppType } from '../../../src/server'
-import { withTempBrowserClawDir } from '../../_helpers/temp-browserclaw-dir'
+import { withTempBrowserosDir } from '../../_helpers/temp-browseros-dir'
 
 function client() {
   return hc<AppType>('http://localhost', {
@@ -23,7 +23,7 @@ function client() {
 
 describe('/site-rules routes', () => {
   test('full lifecycle: empty list → create → list → delete → empty list', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
 
       const emptyRes = await api['site-rules'].$get()
@@ -59,7 +59,7 @@ describe('/site-rules routes', () => {
   })
 
   test('400 when action enum is invalid', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const res = await api['site-rules'].$post({
         json: {
@@ -74,7 +74,7 @@ describe('/site-rules routes', () => {
   })
 
   test('400 when label is empty', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const res = await api['site-rules'].$post({
         json: { label: '', domain: 'x.com', action: 'submit' },
@@ -84,7 +84,7 @@ describe('/site-rules routes', () => {
   })
 
   test('400 when domain is empty', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const res = await api['site-rules'].$post({
         json: { label: 'x', domain: '', action: 'submit' },
@@ -94,7 +94,7 @@ describe('/site-rules routes', () => {
   })
 
   test('DELETE returns 404 for unknown id', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       const res = await api['site-rules'][':id'].$delete({
         param: { id: 'does-not-exist' },
@@ -104,7 +104,7 @@ describe('/site-rules routes', () => {
   })
 
   test('DELETE returns 404 for traversal-shaped ids without touching disk', async () => {
-    await withTempBrowserClawDir(async () => {
+    await withTempBrowserosDir(async () => {
       const api = client()
       // Seed a rule so the file exists; the bogus delete must not
       // affect it.

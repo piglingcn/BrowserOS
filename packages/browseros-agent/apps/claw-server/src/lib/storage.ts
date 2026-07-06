@@ -25,7 +25,7 @@ import {
 } from 'node:fs/promises'
 import { dirname, isAbsolute, normalize, sep } from 'node:path'
 import type { ZodType } from 'zod'
-import { resolveClawServerPath } from './browserclaw-dir'
+import { resolveClawServerPath } from './browseros-dir'
 
 export class StorageNotFoundError extends Error {
   readonly relPath: string

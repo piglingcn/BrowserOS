@@ -109,14 +109,12 @@ index 0000000000000..9a25f32a0da56
 +            ToPathString(descriptor.bundle_dir));
 +  EXPECT_EQ(base::FilePath::StringType(FILE_PATH_LITERAL("browseros_server")),
 +            ToPathString(descriptor.binary_name));
-+  EXPECT_EQ(base::FilePath::StringType(FILE_PATH_LITERAL(".browseros")),
-+            ToPathString(descriptor.execution_dir_name));
 +  EXPECT_EQ(base::FilePath::StringType(FILE_PATH_LITERAL("config.json")),
 +            ToPathString(descriptor.config_file_name));
 +  EXPECT_EQ(std::string_view("/system/health"), descriptor.health_path);
 +  EXPECT_TRUE(descriptor.enable_updater);
 +
-+  // Empty state dir keeps BrowserOS updater state at .browseros/.
++  // Empty state dir preserves the legacy .browseros/current_version layout.
 +  EXPECT_TRUE(descriptor.updater.state_dir.empty());
 +  EXPECT_EQ(std::string_view("https://cdn.browseros.com/appcast-server.xml"),
 +            descriptor.updater.appcast_url);
@@ -136,16 +134,15 @@ index 0000000000000..9a25f32a0da56
 +  EXPECT_EQ(
 +      base::FilePath::StringType(FILE_PATH_LITERAL("browseros-claw-server")),
 +      ToPathString(descriptor.binary_name));
-+  EXPECT_EQ(base::FilePath::StringType(FILE_PATH_LITERAL(".browserclaw")),
-+            ToPathString(descriptor.execution_dir_name));
 +  EXPECT_EQ(base::FilePath::StringType(FILE_PATH_LITERAL("config.json")),
 +            ToPathString(descriptor.config_file_name));
 +  EXPECT_EQ(std::string_view("/system/health"), descriptor.health_path);
 +  EXPECT_TRUE(descriptor.enable_updater);
 +
-+  // Claw keeps updater state directly under .browserclaw/ and fetches its own
-+  // feed.
-+  EXPECT_TRUE(descriptor.updater.state_dir.empty());
++  // Claw isolates OTA state under .browseros/BrowserClawServer/ and fetches its
++  // own feed.
++  EXPECT_EQ(base::FilePath::StringType(FILE_PATH_LITERAL("BrowserClawServer")),
++            ToPathString(descriptor.updater.state_dir));
 +  EXPECT_EQ(
 +      std::string_view("https://cdn.browseros.com/appcast-claw-server.xml"),
 +      descriptor.updater.appcast_url);

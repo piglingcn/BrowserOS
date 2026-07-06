@@ -11,8 +11,8 @@
  * `drizzle-kit studio` for ad-hoc inspection.
  *
  * The `dbCredentials.url` here is a placeholder; the runtime resolves
- * the real path through the BrowserClaw home resolver so it always
- * tracks the operator's BROWSERCLAW_DIR override.
+ * the real path via `interfacePath('audit.sqlite')` so it always
+ * tracks the operator's BROWSEROS_DIR override.
  */
 
 import { defineConfig } from 'drizzle-kit'

@@ -922,9 +922,9 @@ index 0000000000000..f154a9f21a6cb
 +    return base::FilePath();
 +  }
 +  base::FilePath execution_dir =
-+      user_data_dir.Append(descriptor_->execution_dir_name);
-+  // Non-empty state dir isolates a product's OTA state inside its execution
-+  // directory; empty keeps the updater state directly under that directory.
++      user_data_dir.Append(FILE_PATH_LITERAL(".browseros"));
++  // Non-empty state dir isolates a product's OTA state (e.g. Claw under
++  // .browseros/BrowserClawServer/); empty keeps the legacy BrowserOS layout.
 +  if (!descriptor_->updater.state_dir.empty()) {
 +    execution_dir = execution_dir.Append(descriptor_->updater.state_dir);
 +  }

@@ -179,7 +179,7 @@ index 0000000000000..dbd7e166bb02c
 +  }
 +
 +  base::FilePath exec_dir =
-+      user_data_dir.Append(GetManagedServerDescriptor().execution_dir_name);
++      user_data_dir.Append(FILE_PATH_LITERAL(".browseros"));
 +
 +  if (!base::PathExists(exec_dir)) {
 +    if (!base::CreateDirectory(exec_dir)) {

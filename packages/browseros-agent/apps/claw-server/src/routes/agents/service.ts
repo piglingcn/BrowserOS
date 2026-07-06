@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * File-backed agent profile service. One profile per file at
- * <browserclawDir>/agents/<id>.json keyed by a nanoid;
+ * <browserosDir>/claw-server/agents/<id>.json keyed by a nanoid;
  * the slug is the user-facing identifier and is unique across all
  * profiles. mcpUrl is recomputed from the current public MCP URL
  * on every read so a port change between boots doesn't strand the

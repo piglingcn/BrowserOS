@@ -63,7 +63,7 @@ export const newAgentValuesSchema = z.object({
 })
 export type NewAgentValues = z.infer<typeof newAgentValuesSchema>
 
-/** On-disk shape under <browserclawDir>/agents/<id>.json. */
+/** On-disk shape under <browserosDir>/claw-server/agents/<id>.json. */
 export const storedAgentProfileSchema = newAgentValuesSchema.extend({
   id: z.string(),
   slug: z.string(),

@@ -29,9 +29,9 @@ index 0000000000000..a98e3b74de45e
 +  // trivial fields would force an out-of-line ctor, which a constexpr
 +  // aggregate cannot have).
 +  struct UpdaterConfig {
-+    // Optional subdirectory under execution_dir_name holding OTA state
-+    // (current_version file + versions/). Empty keeps the product's updater
-+    // layout directly under its execution directory.
++    // Subdirectory under .browseros holding this product's OTA state
++    // (current_version file + versions/). Empty keeps the legacy BrowserOS
++    // layout directly under .browseros for backward compatibility.
 +    base::FilePath::StringViewType state_dir;
 +    // Stable and alpha appcast feeds.
 +    std::string_view appcast_url;
@@ -45,9 +45,6 @@ index 0000000000000..a98e3b74de45e
 +  std::string_view log_name;
 +  base::FilePath::StringViewType bundle_dir;
 +  base::FilePath::StringViewType binary_name;
-+  // Directory under Chromium user data for config, lock/state, and updater
-+  // files. BrowserOS and BrowserClaw intentionally use different names.
-+  base::FilePath::StringViewType execution_dir_name;
 +  base::FilePath::StringViewType config_file_name;
 +  std::string_view health_path;
 +  // Whether the manager starts an updater for this product at all.
@@ -104,7 +101,7 @@ index 0000000000000..a98e3b74de45e
 +  // Bundled resources directory (fallback).
 +  base::FilePath fallback_resources;
 +
-+  // Runtime data directory selected by the managed server product.
++  // Runtime data directory (~/.browseros or equivalent).
 +  base::FilePath execution;
 +
 +  // Returns true if required paths are set.

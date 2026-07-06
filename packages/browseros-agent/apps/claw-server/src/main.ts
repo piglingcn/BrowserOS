@@ -23,10 +23,7 @@ import { loadClawConfig } from './config'
 import { applyClawConfig, env } from './env'
 import { bootstrapBrowserosBrowser } from './lib/browser-bootstrap'
 import { setBrowserSession } from './lib/browser-session'
-import {
-  getClawServerDir,
-  migrateLegacyClawServerHome,
-} from './lib/browserclaw-dir'
+import { getClawServerDir } from './lib/browseros-dir'
 import { logger } from './lib/logger'
 import { migrateMcpUrls } from './lib/migrate-mcp-urls'
 import { setLocalServerUrl } from './local-server-url'
@@ -51,29 +48,10 @@ async function start(): Promise<void> {
     port: env.serverPort,
     fetch: app.fetch,
   })
-  let homeMigration: Awaited<ReturnType<typeof migrateLegacyClawServerHome>>
-  try {
-    homeMigration = await migrateLegacyClawServerHome()
-  } catch (error) {
-    httpServer.stop(true)
-    throw error
-  }
   // File sink attaches only after the port bind succeeds: the bind is
   // the de-facto singleton lock, so a second accidental launch dies on
   // EADDRINUSE before it can rotate the live instance's log file.
   logger.setLogFile(getClawServerDir())
-  if (homeMigration.status === 'migrated') {
-    logger.info('legacy claw-server home migrated', {
-      from: homeMigration.from,
-      to: homeMigration.to,
-    })
-  } else if (homeMigration.reason === 'target-exists') {
-    logger.info('legacy claw-server home migration skipped', {
-      reason: homeMigration.reason,
-      from: homeMigration.from,
-      to: homeMigration.to,
-    })
-  }
   const url = `http://${httpServer.hostname}:${httpServer.port}`
   setLocalServerUrl(url)
   logger.info('claw-server listening', { url })

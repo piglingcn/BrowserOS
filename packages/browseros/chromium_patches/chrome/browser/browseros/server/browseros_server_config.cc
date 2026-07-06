@@ -21,12 +21,11 @@ index 0000000000000..6fe71062a9c96
 +    "BrowserOS server",
 +    FILE_PATH_LITERAL("BrowserOSServer"),
 +    FILE_PATH_LITERAL("browseros_server"),
-+    FILE_PATH_LITERAL(".browseros"),
 +    FILE_PATH_LITERAL("config.json"),
 +    "/system/health",
 +    true,
 +    {
-+        // Empty state dir keeps BrowserOS updater state at .browseros/.
++        // Empty state dir keeps the legacy .browseros/current_version layout.
 +        FILE_PATH_LITERAL(""),
 +        "https://cdn.browseros.com/appcast-server.xml",
 +        "https://cdn.browseros.com/appcast-server.alpha.xml",
@@ -39,13 +38,12 @@ index 0000000000000..6fe71062a9c96
 +    "BrowserClaw server",
 +    FILE_PATH_LITERAL("BrowserClawServer"),
 +    FILE_PATH_LITERAL("browseros-claw-server"),
-+    FILE_PATH_LITERAL(".browserclaw"),
 +    FILE_PATH_LITERAL("config.json"),
 +    "/system/health",
 +    true,
 +    {
-+        // Dedicated execution dir keeps Claw OTA state under .browserclaw/.
-+        FILE_PATH_LITERAL(""),
++        // Isolate Claw OTA state under .browseros/BrowserClawServer/.
++        FILE_PATH_LITERAL("BrowserClawServer"),
 +        "https://cdn.browseros.com/appcast-claw-server.xml",
 +        "https://cdn.browseros.com/appcast-claw-server.alpha.xml",
 +        // Claw does not expose the {can_update} readiness contract yet; empty

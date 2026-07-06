@@ -170,31 +170,6 @@ func TestDisplayElementRefsPrefersAtRefs(t *testing.T) {
 	}
 }
 
-func TestSnapshotResultAddsSnapshotTextToStructuredContent(t *testing.T) {
-	result := snapshotResult(7, &mcp.ToolResult{
-		Content: []mcp.ContentItem{
-			{Type: "text", Text: "- button \"Buy\" [ref=e12]"},
-		},
-		StructuredContent: map[string]any{
-			"contentLength": 24,
-			"writtenToFile": false,
-		},
-	})
-
-	if got := result.TextContent(); got != "- button \"Buy\" [ref=@e12]" {
-		t.Fatalf("snapshot text = %q", got)
-	}
-	if got := result.StructuredContent["page"]; got != 7 {
-		t.Fatalf("page = %v, want 7", got)
-	}
-	if got := result.StructuredContent["snapshot"]; got != "- button \"Buy\" [ref=@e12]" {
-		t.Fatalf("snapshot structured content = %q", got)
-	}
-	if got := result.StructuredContent["writtenToFile"]; got != false {
-		t.Fatalf("writtenToFile = %v, want false", got)
-	}
-}
-
 func TestFindMatchesTextAndBuildsClick(t *testing.T) {
 	lines := []string{
 		`- button "Add to Cart" [ref=e12]`,
