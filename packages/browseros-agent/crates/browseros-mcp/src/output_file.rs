@@ -27,7 +27,7 @@ pub fn get_browseros_dir() -> PathBuf {
     {
         return PathBuf::from(override_dir);
     }
-    let dir_name = if env::var("NODE_ENV").ok().as_deref() == Some("development") {
+    let dir_name = if cfg!(debug_assertions) {
         ".browseros-dev"
     } else {
         ".browseros"

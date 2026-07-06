@@ -106,6 +106,14 @@ impl Config {
     }
 
     pub fn load_with_env(path: impl AsRef<Path>, env: &ConfigEnv) -> anyhow::Result<Self> {
+        Self::load_with_env_and_default_dev_mode(path, env, dev_mode_fallback())
+    }
+
+    fn load_with_env_and_default_dev_mode(
+        path: impl AsRef<Path>,
+        env: &ConfigEnv,
+        default_dev_mode: bool,
+    ) -> anyhow::Result<Self> {
         let path = path.as_ref();
         let raw = fs::read_to_string(path)?;
         let sidecar: SidecarConfig = serde_json::from_str(&raw)?;
@@ -129,11 +137,7 @@ impl Config {
             .resources
             .map(|path| resolve_path(&cwd, path))
             .unwrap_or_else(|| cwd.join("resources"));
-        let dev_mode = sidecar.flags.dev_mode.unwrap_or_else(|| {
-            env.get("NODE_ENV")
-                .map(|value| value == "development")
-                .unwrap_or(false)
-        });
+        let dev_mode = sidecar.flags.dev_mode.unwrap_or(default_dev_mode);
         let browserclaw_dir = resolve_browserclaw_dir(env, dev_mode, &cwd);
         let claw_dir = browserclaw_dir.clone();
         let auth_token = sidecar
@@ -179,6 +183,11 @@ impl Config {
     pub fn local_server_url(&self) -> String {
         format!("http://127.0.0.1:{}", self.server_port)
     }
+}
+
+/// Selects Claw dev mode from the Rust build profile when config does not override it.
+fn dev_mode_fallback() -> bool {
+    cfg!(debug_assertions)
 }
 
 fn resolve_path(cwd: &Path, path: PathBuf) -> PathBuf {
@@ -256,6 +265,63 @@ mod tests {
         assert!(cfg.browserclaw_dir.ends_with("browserclaw"));
         assert_eq!(cfg.claw_dir, cfg.browserclaw_dir);
         assert_eq!(cfg.public_mcp_url(), "http://127.0.0.1:9200/mcp");
+        Ok(())
+    }
+
+    #[test]
+    fn uses_build_profile_dev_mode_fallback_without_sidecar_flag() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let config_path = dir.path().join("sidecar.json");
+        fs::write(&config_path, r#"{"ports":{},"directories":{}}"#)?;
+        let env = ConfigEnv::with_vars(BTreeMap::new(), dir.path().join("home"));
+
+        let debug_cfg = Config::load_with_env_and_default_dev_mode(&config_path, &env, true)?;
+        assert!(debug_cfg.dev_mode);
+        assert!(debug_cfg.browserclaw_dir.ends_with(".browserclaw-dev"));
+
+        let release_cfg = Config::load_with_env_and_default_dev_mode(&config_path, &env, false)?;
+        assert!(!release_cfg.dev_mode);
+        assert!(release_cfg.browserclaw_dir.ends_with(".browserclaw"));
+        Ok(())
+    }
+
+    #[test]
+    fn ignores_node_env_when_sidecar_flag_is_missing() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let config_path = dir.path().join("sidecar.json");
+        fs::write(&config_path, r#"{"ports":{},"directories":{}}"#)?;
+        let mut vars = BTreeMap::new();
+        vars.insert("NODE_ENV".to_string(), "development".to_string());
+        let env = ConfigEnv::with_vars(vars, dir.path().join("home"));
+        let release_cfg = Config::load_with_env_and_default_dev_mode(&config_path, &env, false)?;
+        assert!(!release_cfg.dev_mode);
+        assert!(release_cfg.browserclaw_dir.ends_with(".browserclaw"));
+
+        let mut vars = BTreeMap::new();
+        vars.insert("NODE_ENV".to_string(), "production".to_string());
+        let env = ConfigEnv::with_vars(vars, dir.path().join("home"));
+        let debug_cfg = Config::load_with_env_and_default_dev_mode(&config_path, &env, true)?;
+        assert!(debug_cfg.dev_mode);
+        assert!(debug_cfg.browserclaw_dir.ends_with(".browserclaw-dev"));
+        Ok(())
+    }
+
+    #[test]
+    fn sidecar_dev_mode_overrides_build_profile_fallback() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let env = ConfigEnv::with_vars(BTreeMap::new(), dir.path().join("home"));
+
+        let prod_config_path = dir.path().join("prod-sidecar.json");
+        fs::write(&prod_config_path, r#"{"flags":{"devMode":false}}"#)?;
+        let prod_cfg = Config::load_with_env_and_default_dev_mode(&prod_config_path, &env, true)?;
+        assert!(!prod_cfg.dev_mode);
+        assert!(prod_cfg.browserclaw_dir.ends_with(".browserclaw"));
+
+        let dev_config_path = dir.path().join("dev-sidecar.json");
+        fs::write(&dev_config_path, r#"{"flags":{"devMode":true}}"#)?;
+        let dev_cfg = Config::load_with_env_and_default_dev_mode(&dev_config_path, &env, false)?;
+        assert!(dev_cfg.dev_mode);
+        assert!(dev_cfg.browserclaw_dir.ends_with(".browserclaw-dev"));
         Ok(())
     }
 
