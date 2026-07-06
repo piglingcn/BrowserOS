@@ -36,6 +36,7 @@
     "build:claw-server": "FORCE_COLOR=1 bun scripts/build/claw-server.ts --target=all",
     "build:claw-server:ci": "FORCE_COLOR=1 bun scripts/build/claw-server.ts --target=all --ci",
     "build:claw-server:test": "FORCE_COLOR=1 bun scripts/build/claw-server.ts --target=darwin-arm64 --no-upload",
+    "build:claw-server-rust": "cargo build --release -p claw-server-rust",
     "build:rust": "cargo build --workspace",
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",

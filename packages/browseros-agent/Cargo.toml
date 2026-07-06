@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "apps/claw-server-rust"]
 resolver = "3"
 
 [workspace.package]
@@ -12,7 +12,7 @@ repository = "https://github.com/browseros-ai/BrowserOS"
 browseros-cdp = { path = "crates/browseros-cdp" }
 browseros-core = { path = "crates/browseros-core" }
 
-tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "signal", "process"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "signal", "process", "fs"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
@@ -20,16 +20,23 @@ serde_json = "1"
 rmcp = { version = "2.1", features = ["server", "transport-io", "transport-streamable-http-server"] }
 schemars = "1.0"
 axum = "0.8"
-tower = "0.5"
+tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 socket2 = "0.6"
 url = "2"
 base64 = "0.22"
 tokio-util = { version = "0.7", features = ["rt"] }
+clap = { version = "4.5", features = ["derive"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+ulid = "1.2"
+time = { version = "0.3", features = ["formatting"] }
+tempfile = "3.14"
+toml = "0.8"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
