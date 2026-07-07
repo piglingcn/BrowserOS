@@ -10,6 +10,7 @@ on:
       - "packages/browseros/chromium_files/products/**"
       - "packages/browseros/pyproject.toml"
       - "packages/browseros/uv.lock"
+      - "tools/release_secrets/**"
       - ".github/workflows/bos-build-tests.yml"
 
 jobs:
@@ -30,6 +31,10 @@ jobs:
 
       - name: Run bos_build tests
         run: uv run python -m unittest discover -s bos_build -t . -p "*_test.py" -v
+
+      - name: Run release secrets tests
+        working-directory: ${{ github.workspace }}
+        run: python3 -m unittest discover -s tools/release_secrets -t . -p "*_test.py" -v
 
       - name: Ruff
         run: uv run ruff check bos_build

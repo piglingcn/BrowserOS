@@ -114,14 +114,29 @@ gh workflow run release-macos.yml -f products=all -f arch=arm64
 Repository secret and variable names were checked when this document was
 added. Values are never needed locally to inspect this matrix.
 
+Use `tools/release_secrets/sync.py` from the repo root to sync allowlisted
+release secrets from the operator's local `.env.production` into repo-level
+GitHub secrets:
+
+```bash
+tools/release_secrets/sync.py --env-file .env.production --dry-run
+tools/release_secrets/sync.py --env-file .env.production --apply
+tools/release_secrets/sync.py --check
+```
+
+The sync is allowlist-only and keeps values off argv, logs, and temp files by
+piping each value to `gh secret set` over stdin. It deliberately excludes local
+paths and unrelated API keys from `.env.production`.
+
 | Lane | Required names | Current repo status | Notes |
 | --- | --- | --- | --- |
 | R2 browser artifacts and final draft release | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Present | Used by Linux/Windows browser downloads and uploads, server resource uploads, and the draft GitHub release asset step. |
-| BrowserOS server resources | R2 names plus `BROWSEROS_CONFIG_URL`, `POSTHOG_API_KEY`, `SENTRY_DSN`, `AGENT_RUNNER_JWT_SECRET` | R2 and `POSTHOG_API_KEY` present; `BROWSEROS_CONFIG_URL`, `SENTRY_DSN`, and `AGENT_RUNNER_JWT_SECRET` missing | `release-full.yml` fails in preflight before cancelling nightlies or starting paid builds if selected required names are absent. |
+| BrowserOS server resources | R2 names plus `BROWSEROS_CONFIG_URL`, `POSTHOG_API_KEY`, `SENTRY_DSN` | Present | `AGENT_RUNNER_JWT_SECRET` is optional and inlined only when present. `release-full.yml` fails in preflight before cancelling nightlies or starting paid builds if selected required names are absent. |
 | BrowserClaw server resources | R2 names | Present | `SPARKLE_PRIVATE_KEY` is optional for server OTA publishing; the orchestrator passes `publish_ota=false`. |
 | BrowserClaw Rust server resources | R2 names | Present | Uses only GitHub-hosted runners and writes `claw-server-rust/prod-resources`; no signing or OTA secrets are required. |
-| Windows signing | `ESIGNER_USERNAME`, `ESIGNER_PASSWORD`, `ESIGNER_TOTP_SECRET`, `SPARKLE_PRIVATE_KEY` | Missing | `ESIGNER_CREDENTIAL_ID` is optional. Use `sign_windows=false` only for unsigned verification, not a signed release. |
-| macOS release builder | Repository variables `BROWSEROS_REPO_PATH`, `BROWSEROS_CHROMIUM_SRC` | Present | Signing, notarization, R2, and Slack values live in the runner-local `packages/browseros/.env`; do not copy them into GitHub secrets. |
+| Windows signing | `ESIGNER_USERNAME`, `ESIGNER_PASSWORD`, `ESIGNER_TOTP_SECRET`, `SPARKLE_PRIVATE_KEY` | Present after running `tools/release_secrets/sync.py --apply` | `ESIGNER_CREDENTIAL_ID` is optional and is also synced when present. Use `sign_windows=false` only for unsigned verification, not a signed release. |
+| Extension releases | R2 names plus `GH_TOKEN`, `BROWSEROS_AGENT_V2_KEY`, `BROWSEROS_CONTROLLER_KEY`, `BUGREPORTER_KEY`, `BROWSERCLAW_KEY`, `POSTHOG_API_KEY`, `VITE_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `VITE_PUBLIC_POSTHOG_KEY`, `VITE_PUBLIC_POSTHOG_HOST` | Extension signing, Sentry, and PostHog names are synced by `tools/release_secrets/sync.py`; `GH_TOKEN` is external | `GH_TOKEN` is for private extension repo clones and is not sourced from `.env.production`. |
+| macOS release builder | Repository variables `BROWSEROS_REPO_PATH`, `BROWSEROS_CHROMIUM_SRC` | Present | The reusable browser build also reads `MACOS_CERTIFICATE_NAME` and `PROD_MACOS_NOTARIZATION_*` from repo secrets when selected; the certificate P12, certificate password, and keychain password remain external to `.env.production`. |
 | GitHub release assets | `GITHUB_TOKEN` | Automatic | Finalize uses it through `GH_TOKEN`. |
 
 ## Runner Cost And Time
