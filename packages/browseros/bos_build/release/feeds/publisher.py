@@ -116,11 +116,14 @@ class FeedPublisher:
         publish: bool = False,
         allow_downgrade: bool = False,
         verbose: bool = True,
+        stage: bool = True,
     ) -> bool:
         """Run the rails for one feed; write only when publish=True.
 
         verbose=False keeps the rails (and their errors) but skips the
         content/diff dump — for preflight passes that precede a real write.
+        stage=False lets multi-file publishers validate every feed before
+        writing any local staging files.
         """
         log_info(f"\n── {spec.key} " + "─" * max(0, 50 - len(spec.key)))
 
@@ -162,9 +165,17 @@ class FeedPublisher:
             self._print_content_and_diff(spec, content, live)
 
         if not publish:
-            if verbose:
+            if stage:
+                staging = self.stage(spec, content)
+                if verbose:
+                    log_info(
+                        f"DRY RUN — {spec.key} not written "
+                        f"(pass --publish to write); staged: {staging}"
+                    )
+            elif verbose:
                 log_info(
-                    f"DRY RUN — {spec.key} not written (pass --publish to write)"
+                    f"DRY RUN — {spec.key} not written "
+                    "(pass --publish to write); staging deferred"
                 )
             return True
 
@@ -181,12 +192,18 @@ class FeedPublisher:
             ContentType=content_type,
         )
 
+        staging = self.stage(spec, content)
+        log_success(f"Published {spec.url} (staging: {staging})")
+        return True
+
+    def stage(self, spec: FeedSpec, content: str) -> Path:
+        return self._write_staging(spec, content)
+
+    def _write_staging(self, spec: FeedSpec, content: str) -> Path:
         staging = self.staging_path(spec)
         staging.parent.mkdir(parents=True, exist_ok=True)
         staging.write_text(content)
-
-        log_success(f"Published {spec.url} (staging: {staging})")
-        return True
+        return staging
 
     def _check_well_formed(self, spec: FeedSpec, content: str) -> bool:
         try:

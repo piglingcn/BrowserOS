@@ -6,7 +6,50 @@ runner time.
 
 ## Workflow Map
 
-The full release path is dispatch-only:
+The primary release entry points are the per-product full-release workflows.
+They are dispatch-only and keep BrowserOS and BrowserClaw releases independent:
+
+```text
+release-browseros.yml
+  preflight
+    - read packages/browseros/resources/BROWSEROS_VERSION for browser artifacts
+    - require extensions_version when extensions is alpha or prod
+    - optionally cancel only nightly-release.yml WarpBuild runs
+    - fail early when selected lane secrets or variables are missing
+  server resources, when include_servers=true
+    - release-server.yml
+  browser builds
+    - release-linux.yml -> build-browseros.yml with products=browseros
+    - release-windows.yml -> build-browseros.yml with products=browseros
+    - release-macos.yml with products=browseros
+  extension CRX, when extensions is alpha or prod
+    - release-extensions.yml with extension=agent and publish_manifest=false
+  stage_updates
+    - render appcast and extension feed dry runs from R2 metadata
+    - upload staged XML/JSON as staged-update-feeds-browseros-<version>
+    - write manual promote commands to the Actions summary
+  finalize
+    - write the release summary
+    - create or refresh draft GitHub release assets when all selected lanes pass
+
+release-browserclaw.yml
+  preflight
+  server resources, when include_servers=true
+    - release-claw-server.yml
+    - release-claw-server-rust.yml
+  browser builds
+    - release-linux.yml -> build-browseros.yml with products=browserclaw
+    - release-windows.yml -> build-browseros.yml with products=browserclaw
+    - release-macos.yml with products=browserclaw
+  extension CRX, when extensions is alpha or prod
+    - release-extensions.yml with extension=browserclaw and publish_manifest=false
+  stage_updates
+    - upload staged XML/JSON as staged-update-feeds-browserclaw-<version>
+  finalize
+```
+
+`release-full.yml` remains the both-products hammer. Use it only when one
+dispatch should intentionally coordinate both products:
 
 ```text
 release-full.yml
@@ -30,21 +73,23 @@ release-full.yml
     - create or refresh draft GitHub release assets when all selected lanes pass
 ```
 
-`release-full.yml` has no schedule and no tag trigger. A full release is a
-manual dispatch so it cannot accidentally occupy WarpBuild or the self-hosted
-macOS builder.
+The full-release workflows have no schedule and no tag trigger. A full release
+is a manual dispatch so it cannot accidentally occupy WarpBuild or the
+self-hosted macOS builder.
 
 ## Component Workflows
 
-| Workflow | Purpose | Dispatch | Called by `release-full.yml` |
+| Workflow | Purpose | Dispatch | Orchestrator use |
 | --- | --- | --- | --- |
 | `.github/workflows/release-server.yml` | Builds BrowserOS server resource zips for every browser target, uploads versioned R2 resource keys, attaches server release assets, and reflects the server package version. | Manual and `agent-server/v*` tags | Yes, when `include_servers=true` and `products` includes `browseros` |
 | `.github/workflows/release-claw-server.yml` | Builds BrowserClaw server and onboard resource zips, uploads versioned R2 keys, attaches server release assets, and reflects Claw package versions. | Manual and `claw-server/v*` tags | Yes, when `include_servers=true` and `products` includes `browserclaw` |
-| `.github/workflows/release-claw-server-rust.yml` | Builds BrowserClaw Rust server resource zips for every browser target, uploads versioned R2 keys under `claw-server-rust/prod-resources`, and attaches Rust server release assets. | Manual, reusable, and `claw-server-rust/v*` tags | No; BrowserClaw browser builds read the latest Rust resources when the bos_build flag is enabled, but this resource lane remains explicitly dispatched |
-| `.github/workflows/release-extensions.yml` | Builds, signs, uploads, and optionally republishes extension CRX manifests for `agent`, `controller`, `bugreporter`, and `browserclaw`. | Manual and reusable | No; per-product orchestrators can call it with `secrets: inherit` |
+| `.github/workflows/release-claw-server-rust.yml` | Builds BrowserClaw Rust server resource zips for every browser target, uploads versioned R2 keys under `claw-server-rust/prod-resources`, and attaches Rust server release assets. | Manual, reusable, and `claw-server-rust/v*` tags | Called by `release-browserclaw.yml` when `include_servers=true`; not called by `release-full.yml` |
+| `.github/workflows/release-extensions.yml` | Builds, signs, uploads, and optionally republishes extension CRX manifests for `agent`, `controller`, `bugreporter`, and `browserclaw`. | Manual and reusable | Called by per-product orchestrators with `secrets: inherit` and `publish_manifest=false` |
 | `.github/workflows/release-linux.yml` | Builds Linux x64 browser artifacts on WarpBuild, one matrix entry per selected product. | Manual | Yes |
 | `.github/workflows/release-windows.yml` | Builds Windows x64 browser artifacts on WarpBuild and optionally signs them. | Manual | Yes |
 | `.github/workflows/release-macos.yml` | Builds signed macOS artifacts on the dedicated self-hosted builder. | Manual | Yes |
+| `.github/workflows/release-browseros.yml` | Orchestrates one BrowserOS release, including server resources, selected browser platforms, optional agent CRX upload, staged feed artifacts, and draft GitHub release assets. | Manual only | No reusable entry point |
+| `.github/workflows/release-browserclaw.yml` | Orchestrates one BrowserClaw release, including TS and Rust server resources, selected browser platforms, optional BrowserClaw CRX upload, staged feed artifacts, and draft GitHub release assets. | Manual only | No reusable entry point |
 | `.github/workflows/release-full.yml` | Orchestrates servers, selected browser platforms, and draft GitHub release asset creation. | Manual only | No reusable entry point |
 
 Browser artifacts use the BrowserOS browser version from
@@ -72,9 +117,10 @@ The browser build downloads only the selected BrowserClaw variant. BrowserClaw
 server OTA feeds (`appcast-claw-server*.xml`) remain pinned to the TypeScript
 server bundle until a separate feed migration changes them.
 
-The reusable nesting depth is `release-full.yml -> release-linux.yml or
-release-windows.yml -> build-browseros.yml`, which stays below GitHub's limit
-of four workflow levels.
+The reusable nesting depth is `release-browseros.yml`,
+`release-browserclaw.yml`, or `release-full.yml` -> `release-linux.yml` or
+`release-windows.yml` -> `build-browseros.yml`, which stays below GitHub's
+limit of four workflow levels.
 
 The `bundle_local_extensions` profile switch defaults off for release
 reproducibility. Existing CI profiles keep it off; a self-hosted macOS nightly
@@ -84,7 +130,57 @@ bundled CDN manifest. Reusable `build-browseros.yml` callers enabling such a
 profile must also pass `bundle-local-extensions: true` so Bun and extension
 signing/build env are prepared.
 
-## Full Release Inputs
+## Per-Product Full Release Inputs
+
+Use these as the normal release entry points. The extension CRX version is
+independent of the browser version; pass `extensions_version` whenever
+`extensions` is `alpha` or `prod`.
+
+```bash
+gh workflow run release-browseros.yml \
+  -f platforms=all \
+  -f include_servers=true \
+  -f sign_windows=true \
+  -f macos_arch=arm64 \
+  -f upload_to_r2=true \
+  -f extensions=alpha \
+  -f extensions_version=<agent-extension-version> \
+  -f preempt_nightly=true \
+  -f github_release_draft=true
+
+gh workflow run release-browserclaw.yml \
+  -f platforms=all \
+  -f include_servers=true \
+  -f sign_windows=true \
+  -f macos_arch=arm64 \
+  -f upload_to_r2=true \
+  -f extensions=alpha \
+  -f extensions_version=<browserclaw-extension-version> \
+  -f preempt_nightly=true \
+  -f github_release_draft=true
+```
+
+Useful narrower runs:
+
+```bash
+# BrowserOS Linux only, still stages feed previews where applicable.
+gh workflow run release-browseros.yml \
+  -f platforms=linux \
+  -f extensions=skip
+
+# BrowserClaw browser artifacts against server resources already staged in R2.
+gh workflow run release-browserclaw.yml \
+  -f include_servers=false \
+  -f extensions=skip
+
+# BrowserClaw macOS universal build only.
+gh workflow run release-browserclaw.yml \
+  -f platforms=macos \
+  -f macos_arch=universal \
+  -f extensions=skip
+```
+
+## Both-Products Full Release Inputs
 
 ```bash
 gh workflow run release-full.yml \
@@ -177,8 +273,9 @@ Rules of thumb:
 
 ## Draft GitHub Release
 
-The final job creates draft GitHub release assets only when every selected
-server and browser lane succeeds and `upload_to_r2=true`. It runs:
+In per-product workflows, the final job creates draft GitHub release assets only
+when every selected server, browser, and selected extension lane succeeds and
+`upload_to_r2=true`. It runs one of these commands:
 
 ```bash
 cd packages/browseros
@@ -186,16 +283,41 @@ uv run browseros release github create --version <version> --draft --product bro
 uv run browseros release github create --version <version> --draft --product browserclaw
 ```
 
-For `products=browseros` or `products=browserclaw`, only that product command is
+`release-full.yml` still runs both commands when `products=all`; for
+`products=browseros` or `products=browserclaw`, only that product command is
 run. If the target GitHub release already exists and is published, the workflow
-refuses to modify it. If it is still a draft, matching product assets are removed
-first so reruns refresh the draft from current R2 artifacts.
+refuses to modify it. If it is still a draft, matching product assets are
+removed first so reruns refresh the draft from current R2 artifacts.
+
+## Staged Update Feed Artifacts
+
+The per-product workflows stage update-feed files after successful selected
+build lanes when `upload_to_r2=true`. The stage job runs dry-run feed commands,
+never `--publish` and never `--allow-downgrade`:
+
+```bash
+cd packages/browseros
+uv run browseros release appcast --version <version> --product <browseros|browserclaw>
+uv run browseros release extensions --channel <alpha|prod> --set <agent|browserclaw>=<extension-version>
+```
+
+The job uploads the staged XML/JSON files as one artifact:
+
+- `staged-update-feeds-browseros-<version>`
+- `staged-update-feeds-browserclaw-<version>`
+
+Appcast rendering is best-effort because the CLI renders the product's full
+browser feed set and fails wholesale when a selected platform has no matching
+feed artifact or a macOS artifact is missing Sparkle signature metadata. Those
+failures are reported as warnings in the Actions summary without failing the
+run. Files from a failed feed command are discarded before artifact upload, so
+the artifact contains only feed sets whose dry-run command completed.
 
 ## Manual Promote To Live
 
-Promotion is deliberately outside `release-full.yml`. Inspect the R2 metadata,
-downloaded artifacts, and draft GitHub release first. Then promote each selected
-product explicitly:
+Promotion is deliberately outside CI. Inspect the staged update-feed artifact,
+R2 metadata, downloaded artifacts, and draft GitHub release first. Then promote
+the product explicitly:
 
 ```bash
 cd packages/browseros
@@ -208,13 +330,15 @@ uv run browseros release list --version <version> --product browserclaw
 uv run browseros release publish --version <version> --product browseros
 uv run browseros release publish --version <version> --product browserclaw
 
-# Preview appcast changes first, then publish.
-uv run browseros release appcast --version <version> --product browseros
+# Publish appcast changes after inspecting the staged artifact.
 uv run browseros release appcast --version <version> --product browseros --publish
-uv run browseros release appcast --version <version> --product browserclaw
 uv run browseros release appcast --version <version> --product browserclaw --publish
+
+# Publish extension update manifests only if the per-product run built a CRX.
+uv run browseros release extensions --channel alpha --set agent=<agent-extension-version> --publish
+uv run browseros release extensions --channel alpha --set browserclaw=<browserclaw-extension-version> --publish
 ```
 
 Server OTA promotion is also manual. The server release workflows can generate
-alpha OTA artifacts when their own `publish_ota` input is true, but the full
-release orchestrator does not enable that input.
+alpha OTA artifacts when their own `publish_ota` input is true, but the
+full-release orchestrators do not enable that input.

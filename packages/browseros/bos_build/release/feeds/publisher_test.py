@@ -101,7 +101,7 @@ class PublisherTestCase(unittest.TestCase):
             now=lambda: FIXED_NOW,
         )
 
-    def test_dry_run_writes_nothing(self):
+    def test_dry_run_stages_without_r2_writes(self):
         publisher = self._publisher(
             {"appcast.xml": _mac_appcast("10000.0.46.0.0").encode()}
         )
@@ -110,7 +110,21 @@ class PublisherTestCase(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(self.client.calls, [])
-        self.assertFalse(self.appcast_staging.exists())
+        staged = self.appcast_staging / "appcast.xml"
+        self.assertEqual(staged.read_text(), _mac_appcast())
+
+    def test_dry_run_stage_false_does_not_write_staging_file(self):
+        publisher = self._publisher(
+            {"appcast.xml": _mac_appcast("10000.0.46.0.0").encode()}
+        )
+
+        ok = publisher.publish(
+            feed_by_key("appcast.xml"), _mac_appcast(), stage=False
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(self.client.calls, [])
+        self.assertFalse((self.appcast_staging / "appcast.xml").exists())
 
     def test_publish_backs_up_live_before_put(self):
         live = _mac_appcast("10000.0.46.0.0").encode()
@@ -154,6 +168,7 @@ class PublisherTestCase(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertEqual(self.client.calls, [])
+        self.assertFalse(self.appcast_staging.exists())
 
     def test_downgrade_allowed_with_flag(self):
         publisher = self._publisher(

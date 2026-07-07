@@ -29,6 +29,7 @@ class FakePublisher:
         self.refuse = set(refuse)
         self.calls = []
         self.head_calls = []
+        self.stage_calls = []
 
     def fetch_live(self, key):
         return self.live.get(key)
@@ -40,7 +41,7 @@ class FakePublisher:
         return self.head_status
 
     def publish(self, spec, content, publish=False, allow_downgrade=False,
-                verbose=True):
+                verbose=True, stage=True):
         self.calls.append(
             SimpleNamespace(
                 key=spec.key,
@@ -48,9 +49,14 @@ class FakePublisher:
                 publish=publish,
                 allow_downgrade=allow_downgrade,
                 verbose=verbose,
+                stage=stage,
             )
         )
         return spec.key not in self.refuse
+
+    def stage(self, spec, content):
+        self.stage_calls.append(SimpleNamespace(key=spec.key, content=content))
+        return f"/staged/{spec.key.rsplit('/', 1)[-1]}"
 
 
 def _live_feeds():
@@ -214,6 +220,15 @@ class ExtensionsFeedModuleTest(unittest.TestCase):
         self.assertEqual(len(self.publisher.calls), 3)
         self.assertTrue(all(not c.publish for c in self.publisher.calls))
         self.assertTrue(all(c.verbose for c in self.publisher.calls))
+        self.assertTrue(all(not c.stage for c in self.publisher.calls))
+        self.assertEqual(
+            [c.key for c in self.publisher.stage_calls],
+            [
+                "extensions/update-manifest.alpha.xml",
+                "extensions/extensions.alpha.json",
+                "extensions/bundled-manifest.xml",
+            ],
+        )
 
     def test_publish_preflights_all_three_before_writing(self):
         self._run(
@@ -226,6 +241,7 @@ class ExtensionsFeedModuleTest(unittest.TestCase):
             [(False, False)] * 3 + [(True, True)] * 3,
         )
         self.assertTrue(all(c.allow_downgrade for c in self.publisher.calls))
+        self.assertTrue(all(not c.stage for c in self.publisher.calls[:3]))
 
     def test_refused_preflight_blocks_every_write(self):
         # The bundled manifest can hold a newer version from an earlier alpha
@@ -240,6 +256,27 @@ class ExtensionsFeedModuleTest(unittest.TestCase):
             self._run(publisher=publisher, publish=True)
 
         self.assertTrue(all(not c.publish for c in publisher.calls))
+        self.assertEqual(publisher.stage_calls, [])
+
+    def test_refused_late_dry_run_does_not_stage_earlier_files(self):
+        publisher = FakePublisher(
+            live=_live_feeds(), refuse={"extensions/bundled-manifest.xml"}
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "extensions/bundled-manifest.xml"
+        ):
+            self._run(publisher=publisher)
+
+        self.assertEqual(
+            [c.key for c in publisher.calls],
+            [
+                "extensions/update-manifest.alpha.xml",
+                "extensions/extensions.alpha.json",
+                "extensions/bundled-manifest.xml",
+            ],
+        )
+        self.assertEqual(publisher.stage_calls, [])
 
     def test_refused_publish_aborts_remaining_files(self):
         publisher = FakePublisher(
