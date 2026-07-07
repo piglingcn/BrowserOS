@@ -493,6 +493,20 @@ class ProfileTest(unittest.TestCase):
             plan(prof.switches, "arm64", "macos"), plan(CI, "arm64", "macos")
         )
 
+    def test_nightly_macos_profile_keeps_signed_defaults_without_downloads(self):
+        profile_path = (
+            Path(__file__).resolve().parents[1] / "profiles" / "nightly-macos.yaml"
+        )
+        switches = load_profile(profile_path).switches.resolved()
+
+        self.assertTrue(switches.clean)
+        self.assertEqual("full", switches.provision)
+        self.assertFalse(switches.download)
+        self.assertTrue(switches.sign)
+        self.assertTrue(switches.upload)
+        self.assertTrue(switches.bundle_local_extensions)
+        self.assertNotIn("download_resources", plan(switches, "arm64", "macos"))
+
     def test_arch_list(self):
         prof = self._load("preset: release\narch: [x64, arm64]\n")
         self.assertEqual(prof.switches.architectures, ("x64", "arm64"))
@@ -631,8 +645,8 @@ class PreflightTest(unittest.TestCase):
 
 class DownloadSwitchTest(unittest.TestCase):
     def test_no_download_drops_resource_download_only(self):
-        # nightly-macos-build.yml stages server resources locally and used
-        # to rewrite the yaml to drop download_resources
+        # The signed macOS nightly profile stages server resources locally
+        # and disables only download_resources.
         with_dl = plan(RELEASE, "arm64", "macos")
         without = plan(Switches(preset="release", download=False), "arm64", "macos")
         self.assertEqual([s for s in with_dl if s != "download_resources"], without)

@@ -86,8 +86,7 @@ self-hosted macOS builder.
 | `.github/workflows/release-claw-server-rust.yml` | Builds BrowserClaw Rust server resource zips for every browser target, uploads versioned R2 keys under `claw-server-rust/prod-resources`, and attaches Rust server release assets. | Manual, reusable, and `claw-server-rust/v*` tags | Called by `release-browserclaw.yml` when `include_servers=true`; not called by `release-full.yml` |
 | `.github/workflows/release-extensions.yml` | Builds, signs, uploads, and optionally republishes extension CRX manifests for `agent`, `controller`, `bugreporter`, and `browserclaw`. | Manual and reusable | Called by per-product orchestrators with `secrets: inherit` and `publish_manifest=false` |
 | `.github/workflows/release-linux.yml` | Builds Linux x64 browser artifacts on WarpBuild, one matrix entry per selected product. | Manual | Yes |
-| `.github/workflows/release-windows.yml` | Builds Windows x64 browser artifacts on WarpBuild and optionally signs them. | Manual | Yes |
-| `.github/workflows/release-macos.yml` | Builds signed macOS artifacts on the dedicated self-hosted builder. | Manual | Yes |
+| `.github/workflows/release-macos.yml` | Builds signed macOS artifacts on the dedicated self-hosted builder and downloads published server/onboard resource bundles from R2. | Manual | Yes |
 | `.github/workflows/release-browseros.yml` | Orchestrates one BrowserOS release, including server resources, selected browser platforms, optional agent CRX upload, staged feed artifacts, and draft GitHub release assets. | Manual only | No reusable entry point |
 | `.github/workflows/release-browserclaw.yml` | Orchestrates one BrowserClaw release, including TS and Rust server resources, selected browser platforms, optional BrowserClaw CRX upload, staged feed artifacts, and draft GitHub release assets. | Manual only | No reusable entry point |
 | `.github/workflows/release-full.yml` | Orchestrates servers, selected browser platforms, and draft GitHub release asset creation. | Manual only | No reusable entry point |
@@ -117,18 +116,26 @@ The browser build downloads only the selected BrowserClaw variant. BrowserClaw
 server OTA feeds (`appcast-claw-server*.xml`) remain pinned to the TypeScript
 server bundle until a separate feed migration changes them.
 
+`release-macos.yml` follows this release rule too: it does not build server
+resources from the checked-out `packages/browseros-agent` tree. Its browser
+build command leaves downloads enabled, so `download_resources` fetches the
+published BrowserOS server bundle, selected BrowserClaw server bundle, and
+onboarding bundle from R2 using the runner-local `packages/browseros/.env` R2
+credentials.
+
 The reusable nesting depth is `release-browseros.yml`,
 `release-browserclaw.yml`, or `release-full.yml` -> `release-linux.yml` or
 `release-windows.yml` -> `build-browseros.yml`, which stays below GitHub's
 limit of four workflow levels.
 
 The `bundle_local_extensions` profile switch defaults off for release
-reproducibility. Existing CI profiles keep it off; a self-hosted macOS nightly
-profile can set it true to build and pack in-repo agent/browserclaw CRXs from
-the checked-out tree while external required extensions still come from the
-bundled CDN manifest. Reusable `build-browseros.yml` callers enabling such a
-profile must also pass `bundle-local-extensions: true` so Bun and extension
-signing/build env are prepared.
+reproducibility. Release CI profiles keep it off and consume published extension
+bundles. The self-hosted macOS nightly profile sets it true to build and pack
+in-repo agent/browserclaw CRXs from the checked-out tree while external required
+extensions still come from the bundled CDN manifest. Reusable
+`build-browseros.yml` callers enabling such a profile must also pass
+`bundle-local-extensions: true` so Bun and extension signing/build env are
+prepared.
 
 ## Per-Product Full Release Inputs
 
@@ -268,7 +275,8 @@ Rules of thumb:
   can take 6 to 20 hours for all products or universal builds.
 - `preempt_nightly=true` cancels only queued or in-progress
   `.github/workflows/nightly-release.yml` runs. It does not cancel
-  `Nightly: macOS Browser (signed, self-hosted)`; the shared `macos-build`
+  `.github/workflows/nightly-browseros.yml` or
+  `.github/workflows/nightly-browserclaw.yml`; the shared `macos-build`
   concurrency group serializes self-hosted macOS work.
 
 ## Draft GitHub Release

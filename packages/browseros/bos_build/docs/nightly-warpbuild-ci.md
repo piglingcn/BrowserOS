@@ -7,9 +7,9 @@ run, and refreshes a rolling `nightly` prerelease on GitHub. Its per-platform
 build job delegates to the reusable Chromium build workflow in
 `.github/workflows/build-browseros.yml`, so the WarpBuild checkout/cache/build
 recipe is shared with the release workflows.
-It complements (does not replace) the signed self-hosted macOS nightly in
-`nightly-macos-build.yml`; once signing is wired up here, that workflow can
-be retired.
+It complements the signed self-hosted macOS product nightlies in
+`nightly-browseros.yml` and `nightly-browserclaw.yml`. Those dedicated Mac Mini
+workflows are the signed daily-test path for macOS arm64.
 
 ## Runners
 

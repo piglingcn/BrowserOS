@@ -365,54 +365,6 @@ jobs:
         with:
           bun-version: "1.3.6"
 
-      - name: Stage server resources for packaging
-        env:
-          BROWSEROS_REPO: ${{ steps.build_inputs.outputs.browseros_repo }}
-        run: |
-          set -euo pipefail
-          agent_root="$BROWSEROS_REPO/packages/browseros-agent"
-          browseros_root="$BROWSEROS_REPO/packages/browseros"
-
-          cd "$agent_root"
-          bun ci
-          bun scripts/build/server.ts --target=darwin-arm64 --ci
-          bun scripts/build/claw-server.ts --target=darwin-arm64 --ci
-          bun scripts/build/claw-onboard.ts --ci
-
-          cd "$browseros_root"
-          AGENT_ROOT="$agent_root" BROWSEROS_ROOT="$browseros_root" uv run python - <<'PY'
-          import os
-          import shutil
-          from pathlib import Path
-
-          from bos_build.steps.storage.download import extract_artifact_zip
-
-          agent_root = Path(os.environ["AGENT_ROOT"])
-          browseros_root = Path(os.environ["BROWSEROS_ROOT"])
-          artifacts = [
-              (
-                  agent_root / "dist/prod/server/browseros-server-resources-darwin-arm64.zip",
-                  browseros_root / "resources/binaries/browseros_server/darwin-arm64",
-              ),
-              (
-                  agent_root / "dist/prod/claw-server/browseros-claw-server-resources-darwin-arm64.zip",
-                  browseros_root / "resources/binaries/browseros_claw_server/darwin-arm64",
-              ),
-              (
-                  agent_root / "dist/prod/claw-onboard/browseros-claw-onboard-resources.zip",
-                  browseros_root / "resources/binaries/browseros_claw_onboard",
-              ),
-          ]
-
-          for archive, destination in artifacts:
-              if not archive.is_file():
-                  raise SystemExit(f"Missing local server resource archive: {archive}")
-              if destination.exists():
-                  shutil.rmtree(destination)
-              extracted = extract_artifact_zip(archive, destination)
-              print(f"Staged {len(extracted)} file(s) from {archive.name}")
-          PY
-
       - name: Build selected products
         env:
           BROWSEROS_REPO: ${{ steps.build_inputs.outputs.browseros_repo }}
@@ -423,11 +375,9 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BROWSEROS_REPO/packages/browseros"
-          # Server resources are staged locally by the previous step, so
-          # the R2 download is off; upload toggles with the run input.
           for product in $PRODUCT_IDS; do
             echo "Building $product for macOS $ARCH"
-            flags=(--preset release --product "$product" --arch "$ARCH" --no-download)
+            flags=(--preset release --product "$product" --arch "$ARCH")
             if [ "$UPLOAD_TO_R2" != "true" ]; then
               flags+=(--no-upload)
             fi

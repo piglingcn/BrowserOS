@@ -1,4 +1,4 @@
-name: "Nightly: macOS Browser (signed, self-hosted)"
+name: "Nightly: BrowserOS macOS (signed)"
 
 on:
   schedule:
@@ -158,7 +158,7 @@ jobs:
           echo "Built version: $version"
 
       - name: Commit version bump via pull request
-        if: ${{ steps.build_inputs.outputs.commit_version == 'true' }}
+        if: ${{ steps.build_inputs.outputs.commit_version == 'true' && steps.build_inputs.outputs.bump_mode != 'none' }}
         env:
           BROWSEROS_REPO: ${{ steps.build_inputs.outputs.browseros_repo }}
           TARGET_REF: ${{ steps.build_inputs.outputs.target_ref }}
@@ -255,7 +255,7 @@ jobs:
         with:
           bun-version: "1.3.6"
 
-      - name: Stage server resources for packaging
+      - name: Stage BrowserOS nightly resources
         env:
           BROWSEROS_REPO: ${{ steps.build_inputs.outputs.browseros_repo }}
         run: |
@@ -266,7 +266,6 @@ jobs:
           cd "$agent_root"
           bun ci
           bun scripts/build/server.ts --target=darwin-arm64 --ci
-          bun scripts/build/claw-server.ts --target=darwin-arm64 --ci
           bun scripts/build/claw-onboard.ts --ci
 
           cd "$browseros_root"
@@ -283,10 +282,6 @@ jobs:
               (
                   agent_root / "dist/prod/server/browseros-server-resources-darwin-arm64.zip",
                   browseros_root / "resources/binaries/browseros_server/darwin-arm64",
-              ),
-              (
-                  agent_root / "dist/prod/claw-server/browseros-claw-server-resources-darwin-arm64.zip",
-                  browseros_root / "resources/binaries/browseros_claw_server/darwin-arm64",
               ),
               (
                   agent_root / "dist/prod/claw-onboard/browseros-claw-onboard-resources.zip",
@@ -311,9 +306,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BROWSEROS_REPO/packages/browseros"
-          # Server resources are staged locally by the previous step, so
-          # the R2 download is off; upload toggles with the run input.
-          flags=(--preset release --arch arm64 --no-download)
+          flags=(--profile nightly-macos --product browseros --arch arm64)
           if [ "$UPLOAD_TO_R2" != "true" ]; then
             flags+=(--no-upload)
           fi
@@ -324,9 +317,48 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: BrowserOS_v${{ steps.bump.outputs.version }}_arm64
-          path: ${{ steps.build_inputs.outputs.browseros_repo }}/packages/browseros/releases/${{ steps.bump.outputs.version }}/*.dmg
+          path: ${{ steps.build_inputs.outputs.browseros_repo }}/packages/browseros/releases/${{ steps.bump.outputs.version }}/BrowserOS_*.dmg
           retention-days: 14
           if-no-files-found: warn
+
+      - name: Update rolling BrowserOS nightly prerelease
+        env:
+          BROWSEROS_REPO: ${{ steps.build_inputs.outputs.browseros_repo }}
+          TARGET_REF: ${{ steps.build_inputs.outputs.target_ref }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=("$BROWSEROS_REPO"/packages/browseros/releases/"$VERSION"/BrowserOS_*.dmg)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No BrowserOS DMG found to publish"
+            exit 1
+          fi
+          printf 'Publishing:\n%s\n' "${files[@]}"
+
+          built_sha="$(git -C "$BROWSEROS_REPO" rev-parse HEAD)"
+          notes_file="$(mktemp)"
+          cat > "$notes_file" <<EOF
+          Automated signed BrowserOS macOS arm64 nightly for v$VERSION.
+
+          Source ref: \`$TARGET_REF\`
+          Build commit: \`$built_sha\`
+          EOF
+
+          gh release delete nightly-browseros \
+            --repo "$GITHUB_REPOSITORY" \
+            --cleanup-tag \
+            --yes || true
+          gh release create nightly-browseros \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --latest=false \
+            --target "$built_sha" \
+            --title "BrowserOS Nightly (signed macOS arm64) $(date -u +%Y-%m-%d)" \
+            --notes-file "$notes_file" \
+            "${files[@]}"
 
       - name: Slack failure ping
         if: ${{ failure() }}
@@ -361,7 +393,7 @@ jobs:
               json.dumps(
                   {
                       "text": (
-                          ":x: Nightly macOS build failed on "
+                          ":x: BrowserOS nightly macOS build failed on "
                           f"`{os.environ['TARGET_REF']}` - {os.environ['RUN_URL']}"
                       )
                   }
