@@ -67,9 +67,12 @@ release-windows.yml -> build-browseros.yml`, which stays below GitHub's limit
 of four workflow levels.
 
 The `bundle_local_extensions` profile switch defaults off for release
-reproducibility. `profiles/nightly-ci.yaml` sets it true so nightlies build and
-pack in-repo agent/browserclaw CRXs from the checked-out tree while external
-required extensions still come from the bundled CDN manifest.
+reproducibility. Existing CI profiles keep it off; a self-hosted macOS nightly
+profile can set it true to build and pack in-repo agent/browserclaw CRXs from
+the checked-out tree while external required extensions still come from the
+bundled CDN manifest. Reusable `build-browseros.yml` callers enabling such a
+profile must also pass `bundle-local-extensions: true` so Bun and extension
+signing/build env are prepared.
 
 ## Full Release Inputs
 

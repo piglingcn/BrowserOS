@@ -7,4 +7,3 @@ clean: false
 provision: none
 sign: false
 upload: false
-bundle_local_extensions: true

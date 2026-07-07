@@ -107,13 +107,13 @@ reusable workflow performs the per-platform recipe:
    prerelease for scheduled main runs.
 
 The `nightly-ci` profile is the release preset minus `clean`/
-`git_setup` (steps 4-5 replace them), minus `sign_*`/`upload`, with
-`bundle_local_extensions: true` so the bundled agent/browserclaw CRXs come
-from the checked-out tree. Why not run `git_setup` as-is: it does `git fetch
---tags`, which on the shallow CI clone would pull objects for all ~70k chromium
-tags; the script instead fetches exactly the pinned tag at depth 2. On Windows
-the new `mini_installer` module builds the installer that `sign_windows` would
-otherwise build.
+`git_setup` (steps 4-5 replace them), minus `sign_*`/`upload`. It keeps
+CDN-pinned bundled extensions because WarpBuild images do not provide the
+system Chrome binary required for local CRX packing. Why not run `git_setup`
+as-is: it does `git fetch --tags`, which on the shallow CI clone would pull
+objects for all ~70k chromium tags; the script instead fetches exactly the
+pinned tag at depth 2. On Windows the new `mini_installer` module builds the
+installer that `sign_windows` would otherwise build.
 
 ## Caching strategy
 

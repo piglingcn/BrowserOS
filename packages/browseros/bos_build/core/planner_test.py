@@ -642,7 +642,7 @@ class DownloadSwitchTest(unittest.TestCase):
         prof = load_profile(shipped)
         # Shipped profiles stay switch-based; modules: is a local-only opt-in.
         self.assertIsNone(prof.modules)
-        self.assertTrue(prof.switches.bundle_local_extensions)
+        self.assertFalse(prof.switches.bundle_local_extensions)
         for platform, arch in (
             ("macos", "arm64"),
             ("windows", "x64"),
