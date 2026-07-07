@@ -2,6 +2,7 @@ use crate::{
     format::{diff::format_diff_result, snapshot::format_snapshot_result},
     framework::{BrowserToolDefaults, BrowserToolOptions, ToolCtx, catalog, execute_tool},
     output_file::create_browser_output_file_access,
+    response::ToolResponse,
     service::{BROWSER_MCP_INSTRUCTIONS, BrowserMcpService, BrowserMcpServiceOptions},
     tools::{grep, wait},
 };
@@ -291,6 +292,27 @@ async fn diff_formatter_keeps_unchanged_compact() {
     .await;
     assert_eq!(formatted.text, "no change since last snapshot");
     assert_eq!(formatted.structured, json!({ "changed": false }));
+}
+
+#[tokio::test]
+async fn diff_post_action_failure_is_visible() {
+    let ctx = fake_ctx();
+    let mut response = ToolResponse::new();
+    response.include_diff(7, true);
+    let built = response
+        .build_for_session(&ctx)
+        .await
+        .unwrap_or_else(|err| panic!("post-action failure should not fail response: {err}"));
+    let text = built
+        .content
+        .iter()
+        .filter_map(|content| content.as_text())
+        .map(|content| content.text.as_ref())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("[page 7 diff unavailable:"));
+    assert!(built.structured_content.is_none());
+    assert!(!built.is_error);
 }
 
 #[test]

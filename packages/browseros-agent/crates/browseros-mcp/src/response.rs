@@ -1,8 +1,9 @@
 use crate::{
-    constants::TOOL_POST_ACTION_TIMEOUT,
+    constants::TOOL_POST_ACTION_CAPTURE_TIMEOUT,
     format::{diff::format_diff_result, snapshot::format_snapshot_result},
     framework::{ToolCtx, ToolError, ToolExecResult, ToolResult, merge_structured},
 };
+use browseros_core::{PageId, settle::SettleOutcome};
 use rmcp::model::ContentBlock;
 use serde_json::{Value, json};
 
@@ -89,14 +90,30 @@ impl ToolResponse {
 
         for action in self.post_actions.clone() {
             ctx.throw_if_cancelled()?;
-            let run = self.run_session_post_action(action, ctx);
-            tokio::select! {
+            self.settle_for_post_action(&action, ctx).await?;
+            let result = tokio::select! {
                 () = ctx.cancel.cancelled() => return Err(ToolError::Cancelled),
-                _ = tokio::time::sleep(TOOL_POST_ACTION_TIMEOUT) => {}
-                result = run => {
-                    if let Err(err) = result {
-                        tracing::debug!("browser MCP post-action failed: {err}");
-                    }
+                result = tokio::time::timeout(
+                    TOOL_POST_ACTION_CAPTURE_TIMEOUT,
+                    self.run_session_post_action(action.clone(), ctx)
+                ) => result,
+            };
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    tracing::debug!("browser MCP post-action failed: {err}");
+                    self.text(action.unavailable_text(err.to_string()));
+                }
+                Err(_elapsed) => {
+                    let reason = format!(
+                        "timed out after {}ms",
+                        TOOL_POST_ACTION_CAPTURE_TIMEOUT.as_millis()
+                    );
+                    tracing::debug!(
+                        "browser MCP post-action timed out: {}",
+                        action.unavailable_text(&reason)
+                    );
+                    self.text(action.unavailable_text(reason));
                 }
             }
         }
@@ -212,6 +229,34 @@ impl ToolResponse {
             }
         }
     }
+
+    async fn settle_for_post_action(
+        &self,
+        action: &PostAction,
+        ctx: &ToolCtx,
+    ) -> ToolExecResult<()> {
+        let Some(page) = action.settle_page() else {
+            return Ok(());
+        };
+        let outcome = tokio::select! {
+            () = ctx.cancel.cancelled() => return Err(ToolError::Cancelled),
+            outcome = browseros_core::settle::wait_for_action_settle(
+                ctx.session.pages.as_ref(),
+                PageId(page),
+                browseros_core::timeouts::ACTION_SETTLE_DEFAULT_TIMEOUT,
+            ) => outcome,
+        };
+        match outcome {
+            SettleOutcome::Settled { .. } => {}
+            SettleOutcome::BudgetExpired => {
+                tracing::debug!("browser MCP post-action settle budget expired for page {page}");
+            }
+            SettleOutcome::Skipped { reason } => {
+                tracing::debug!("browser MCP post-action settle skipped for page {page}: {reason}");
+            }
+        }
+        Ok(())
+    }
 }
 
 impl BuiltToolResponse {
@@ -222,6 +267,25 @@ impl BuiltToolResponse {
             content: self.content,
             is_error: self.is_error,
             structured_content: self.structured_content,
+        }
+    }
+}
+
+impl PostAction {
+    fn settle_page(&self) -> Option<u32> {
+        match self {
+            Self::Snapshot { page } | Self::Diff { page, .. } => Some(*page),
+            Self::Pages | Self::Screenshot { .. } => None,
+        }
+    }
+
+    fn unavailable_text(&self, reason: impl AsRef<str>) -> String {
+        let reason = reason.as_ref();
+        match self {
+            Self::Snapshot { page } => format!("[page {page} snapshot unavailable: {reason}]"),
+            Self::Diff { page, .. } => format!("[page {page} diff unavailable: {reason}]"),
+            Self::Pages => format!("[pages unavailable: {reason}]"),
+            Self::Screenshot { page } => format!("[page {page} screenshot unavailable: {reason}]"),
         }
     }
 }

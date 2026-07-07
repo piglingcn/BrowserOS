@@ -8,6 +8,7 @@ pub mod navigation;
 pub mod observer;
 pub mod pages;
 pub mod screenshot;
+pub mod settle;
 pub mod snapshot;
 pub mod timeouts;
 pub mod types;
