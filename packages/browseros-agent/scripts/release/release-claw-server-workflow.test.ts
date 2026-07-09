@@ -1,0 +1,70 @@
+import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const repoRoot = resolve(import.meta.dir, '../../../..')
+const workflow = readFileSync(
+  resolve(repoRoot, '.github/workflows/release-claw-server.yml'),
+  'utf8',
+)
+const shellVersionPlaceholder = '$' + '{VERSION}'
+const shellTargetPlaceholder = '$' + '{target}'
+const shellServerAssetsPlaceholder = '$' + '{server_assets[@]}'
+const publishOtaIf = '$' + '{{ inputs.publish_ota == true }}'
+const expectedBumpBranch = `chore-bump-claw-server-v${shellVersionPlaceholder}`
+
+function reflectVersionStep(): string {
+  const start = workflow.indexOf('- name: Reflect version on main via PR')
+  expect(start).toBeGreaterThanOrEqual(0)
+  return workflow.slice(start)
+}
+
+describe('release-claw-server workflow', () => {
+  it('uses the claw tag trigger and workflow_call contract', () => {
+    expect(workflow).toContain('"claw-server/v*"')
+    expect(workflow).toContain('workflow_call:')
+    expect(workflow).toContain('ref:')
+    expect(workflow).toContain('publish_ota:')
+  })
+
+  it('publishes claw-server and claw-onboard resources to their consumer prefixes', () => {
+    expect(workflow).toContain(
+      'R2_UPLOAD_PREFIX=claw-server/prod-resources bun scripts/build/claw-server.ts --target=all --upload',
+    )
+    expect(workflow).toContain(
+      'R2_UPLOAD_PREFIX=claw-onboard/prod-resources bun scripts/build/claw-onboard.ts --upload',
+    )
+    expect(workflow).toContain(
+      `claw-server/prod-resources/latest/browseros-claw-server-resources-${shellTargetPlaceholder}.zip`,
+    )
+    expect(workflow).toContain(
+      'claw-onboard/prod-resources/latest/browseros-claw-onboard-resources.zip',
+    )
+  })
+
+  it('attaches all built zips to the GitHub release and keeps OTA opt-in', () => {
+    expect(workflow).toContain(
+      `gh release upload "$RELEASE_TAG" "${shellServerAssetsPlaceholder}" "$onboard_asset" --clobber`,
+    )
+    expect(workflow).toContain(`if: ${publishOtaIf}`)
+    expect(workflow).toContain(
+      'uv run browseros ota server release --version "$VERSION" --channel alpha --product browserclaw',
+    )
+  })
+
+  it('uses a flat branch for post-release version bump PRs', () => {
+    const step = reflectVersionStep()
+    const branch = step.match(/^\s*BRANCH="([^"]+)"$/m)?.[1]
+
+    expect(branch).toBe(expectedBumpBranch)
+    expect(branch?.startsWith('release/')).toBe(false)
+  })
+
+  it('fails visibly when post-release version reflection fails', () => {
+    const step = reflectVersionStep()
+
+    expect(step).not.toContain('continue-on-error: true')
+    expect(step).toContain('GITHUB_STEP_SUMMARY')
+    expect(step).toContain('::error::')
+  })
+})

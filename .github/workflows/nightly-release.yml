@@ -1,0 +1,205 @@
+name: "Nightly: All-Platform Browser (unsigned)"
+
+# Manual UNSIGNED release builds of BrowserOS for all three platforms on
+# WarpBuild runners. The shared Chromium/WarpBuild recipe lives in
+# .github/workflows/build-browseros.yml; this workflow resolves the nightly
+# matrix, invokes the reusable workflow with the nightly-ci profile, and
+# optionally refreshes the rolling nightly prerelease. Signing is intentionally
+# off for nightly; see packages/browseros/bos_build/docs/nightly-warpbuild-ci.md
+# for the design and the secret names that enable signing later.
+#
+# build-browseros.yml caches the pinned chromium checkout
+# (packages/browseros/CHROMIUM_VERSION) post-`gclient sync`:
+#   - Linux/macOS: WarpCache (WarpBuilds/cache, no size cap)
+#   - Windows:     R2 tarball via `browseros source cache` (WarpCache does
+#                  not support Windows runners; actions/cache caps at 10GB)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to build
+        type: choice
+        default: all
+        options:
+          - all
+          - linux
+          - windows
+          - macos
+      publish_nightly:
+        description: Update the rolling `nightly` prerelease (main only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - name: Resolve build matrix and publish flag
+        id: plan
+        env:
+          PLATFORMS: ${{ inputs.platforms || 'all' }}
+          PUBLISH_INPUT: ${{ inputs.publish_nightly }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          matrix='[
+            {"platform":"linux","arch":"x64","runner":"warp-ubuntu-2204-x64-32x","timeout":660},
+            {"platform":"windows","arch":"x64","runner":"warp-windows-2025-x64-32x","timeout":780},
+            {"platform":"macos","arch":"arm64","runner":"warp-macos-26-arm64-12x","timeout":720}
+          ]'
+          if [ "$PLATFORMS" != "all" ]; then
+            matrix="$(jq -c --arg p "$PLATFORMS" '[ .[] | select(.platform == $p) ]' <<<"$matrix")"
+          else
+            matrix="$(jq -c . <<<"$matrix")"
+          fi
+
+          publish="false"
+          if [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            if [ "$PUBLISH_INPUT" = "true" ]; then
+              publish="true"
+            fi
+          fi
+
+          {
+            echo "matrix=$matrix"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+
+  # WarpBuild provisions runners on demand via webhook; when none arrive
+  # (org runner-group policy, bad label, account issue) the build jobs sit
+  # queued until GitHub discards them 24h later, holding the
+  # nightly-release concurrency group all day. Fail fast instead — see the
+  # troubleshooting section of
+  # packages/browseros/bos_build/docs/nightly-warpbuild-ci.md.
+  queue-watchdog:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: write
+    steps:
+      - name: Fail fast when no runner picks up the builds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONCURRENCY_GROUP: nightly-release
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 20 * 60 ))
+          failures=0
+          while :; do
+            if jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.name != "queue-watchdog") | select(.status != "completed") | {name, status}]')"; then
+              failures=0
+            else
+              failures=$(( failures + 1 ))
+              if [ "$failures" -ge 3 ]; then
+                echo "::error::queue-watchdog could not list this run's jobs (3 consecutive failures); builds are unwatched this run."
+                exit 1
+              fi
+              sleep 120
+              continue
+            fi
+            total="$(jq 'length' <<<"$jobs")"
+            queued="$(jq '[.[] | select(.status == "queued")] | length' <<<"$jobs")"
+            in_progress="$(jq '[.[] | select(.status == "in_progress")] | length' <<<"$jobs")"
+            if [ "$total" -gt 0 ] && [ "$queued" -eq 0 ]; then
+              echo "All $total build jobs picked up by runners."
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              doc="packages/browseros/bos_build/docs/nightly-warpbuild-ci.md"
+              if [ "$total" -eq 0 ]; then
+                echo "::error::queue-watchdog matched no build jobs - were the matrix job names changed? Fix the filter; not cancelling."
+                exit 1
+              fi
+              stuck="$(jq -r '[.[] | select(.status == "queued") | .name] | join(", ")' <<<"$jobs")"
+              # Cancel only when nothing is live: a queued job is then the
+              # only thing keeping the run (and concurrency group) pinned.
+              if [ "$queued" -gt 0 ] && [ "$in_progress" -eq 0 ]; then
+                echo "::error::No build job is running and these never left the queue: $stuck. Check the runner-group public-repo setting, runner labels, and the WarpBuild dashboard - see $doc. Cancelling the run to free the $CONCURRENCY_GROUP concurrency group."
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel"
+              else
+                echo "::error::Still queued after 20 min: $stuck. In-progress builds keep running - see $doc."
+              fi
+              exit 1
+            fi
+            sleep 120
+          done
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: build (${{ matrix.platform }}-${{ matrix.arch }})
+    uses: ./.github/workflows/build-browseros.yml
+    with:
+      platform: ${{ matrix.platform }}
+      arch: ${{ matrix.arch }}
+      product: browseros
+      runner: ${{ matrix.runner }}
+      timeout-minutes: ${{ matrix.timeout }}
+      profile: nightly-ci
+      sign: false
+      upload: false
+      artifact-name: browseros-nightly-${{ matrix.platform }}-${{ matrix.arch }}
+    secrets: inherit
+
+  publish:
+    needs: [plan, build]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Update rolling nightly prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*/*.dmg dist/*/*.AppImage dist/*/*.deb dist/*/*_installer.exe dist/*/*_installer.zip dist/*.dmg dist/*.AppImage dist/*.deb dist/*_installer.exe dist/*_installer.zip)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No artifacts found to publish"
+            exit 1
+          fi
+          printf 'Publishing:\n%s\n' "${files[@]}"
+
+          notes_file="$(mktemp)"
+          cat > "$notes_file" <<EOF
+          Automated unsigned nightly build from \`main\` (commit $GITHUB_SHA).
+
+          These artifacts are NOT code signed or notarized — expect OS warnings on install. For signed builds use the regular releases.
+          EOF
+
+          # The `nightly` tag is rolling: recreate it via the API each run
+          # (release delete + create; no git force-push involved).
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly \
+            --prerelease \
+            --latest=false \
+            --target "$GITHUB_SHA" \
+            --title "BrowserOS Nightly (unsigned) $(date -u +%Y-%m-%d)" \
+            --notes-file "$notes_file" \
+            "${files[@]}"

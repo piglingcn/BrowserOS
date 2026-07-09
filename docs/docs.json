@@ -1,0 +1,110 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "BrowserOS Documentation",
+  "colors": {
+    "primary": "#f25e1a",
+    "light": "#FF7A3D",
+    "dark": "#D14E10"
+  },
+  "favicon": "/logo/favicon.png",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "index",
+          "onboarding",
+          "update/index",
+          "changelog"
+        ]
+      },
+      {
+        "group": "Core Features",
+        "pages": [
+          "features/bring-your-own-llm",
+          "features/chatgpt-pro-oauth",
+          "features/github-copilot-oauth",
+          "features/local-models",
+          "features/scheduled-tasks",
+          "features/cowork",
+          "features/connect-mcps",
+          "features/smart-nudges",
+          "features/use-with-claude-code",
+          "features/sync-to-cloud",
+          "features/ad-blocking",
+          "features/vertical-tabs"
+        ]
+      },
+      {
+        "group": "Comparisons",
+        "pages": [
+          "comparisons/chrome-devtools-mcp",
+          "comparisons/claude-cowork",
+          "comparisons/openclaw"
+        ]
+      },
+      {
+        "group": "Integrations",
+        "pages": ["integrations/n8n"]
+      },
+      {
+        "group": "Troubleshooting",
+        "pages": ["troubleshooting/connection-issues"]
+      },
+      {
+        "group": "Contributing",
+        "pages": ["contributing"]
+      }
+    ]
+  },
+  "redirects": [
+    { "source": "/features/skills", "destination": "/" },
+    { "source": "/features/soul", "destination": "/" },
+    { "source": "/features/memory", "destination": "/" },
+    { "source": "/features/llm-chat-hub", "destination": "/" },
+    { "source": "/features/workflows", "destination": "/features/scheduled-tasks" },
+    { "source": "/features/qwen-code-oauth", "destination": "/features/bring-your-own-llm" }
+  ],
+  "logo": {
+    "light": "/logo/logo44.png",
+    "dark": "/logo/logo44.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "llms.txt",
+        "href": "/llms.txt"
+      },
+      {
+        "label": "Support",
+        "href": "https://discord.gg/YKwjt5vuKr"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Download",
+      "href": "https://browseros.com"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/browseros_ai",
+      "github": "https://github.com/BrowserOS-ai/BrowserOS",
+      "discord": "https://discord.gg/YKwjt5vuKr",
+      "slack": "https://dub.sh/browserOS-slack"
+    }
+  }
+}

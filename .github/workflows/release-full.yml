@@ -1,0 +1,627 @@
+# Full release is intentionally dispatch-only. It stages versioned R2 release
+# artifacts and creates draft GitHub release assets, but it never promotes
+# browser downloads or appcasts to live URLs.
+#
+# Manual browser promotion after inspection:
+#   cd packages/browseros
+#   uv run browseros release publish --version <version> --product browseros
+#   uv run browseros release appcast --version <version> --product browseros --publish
+#   uv run browseros release publish --version <version> --product browserclaw
+#   uv run browseros release appcast --version <version> --product browserclaw --publish
+name: "Release: Full (servers + browsers)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      products:
+        description: "Product set to release"
+        type: choice
+        default: all
+        options:
+          - all
+          - browseros
+          - browserclaw
+      platforms:
+        description: "Browser platforms to build"
+        type: choice
+        default: all
+        options:
+          - all
+          - linux
+          - windows
+          - macos
+      include_servers:
+        description: "Build and upload server resource bundles before browser builds"
+        type: boolean
+        default: true
+      sign_windows:
+        description: "Sign Windows binaries and update artifacts"
+        type: boolean
+        default: true
+      macos_arch:
+        description: "macOS architecture to build"
+        type: choice
+        default: arm64
+        options:
+          - arm64
+          - universal
+      upload_to_r2:
+        description: "Upload browser release metadata/artifacts to R2"
+        type: boolean
+        default: true
+      preempt_nightly:
+        description: "Cancel queued/in-progress WarpBuild nightly-release.yml runs"
+        type: boolean
+        default: true
+      github_release_draft:
+        description: "Create or refresh draft GitHub release assets after successful builds"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-full
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Resolve release version
+        id: version
+        run: |
+          set -euo pipefail
+          version_file="packages/browseros/resources/BROWSEROS_VERSION"
+          if [ ! -f "$version_file" ]; then
+            echo "::error::Missing $version_file"
+            exit 1
+          fi
+
+          first_line="$(sed -n '1p' "$version_file" | tr -d '[:space:]')"
+          if [ -n "$first_line" ] && [[ "$first_line" != *"="* ]]; then
+            version="$first_line"
+          else
+            major=0
+            minor=0
+            build=0
+            patch=0
+            while IFS='=' read -r key value; do
+              key="${key//[[:space:]]/}"
+              value="${value//[[:space:]]/}"
+              case "$key" in
+                BROWSEROS_MAJOR) major="$value" ;;
+                BROWSEROS_MINOR) minor="$value" ;;
+                BROWSEROS_BUILD) build="$value" ;;
+                BROWSEROS_PATCH) patch="$value" ;;
+              esac
+            done < "$version_file"
+
+            if [ "$patch" != "0" ]; then
+              version="$major.$minor.$build.$patch"
+            elif [ "$build" != "0" ]; then
+              version="$major.$minor.$build"
+            else
+              version="$major.$minor.0"
+            fi
+          fi
+
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "::error::Invalid BrowserOS release version: $version"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved BrowserOS release version: $version"
+
+      - name: Validate selected lane configuration
+        env:
+          INPUT_PRODUCTS: ${{ inputs.products }}
+          INPUT_PLATFORMS: ${{ inputs.platforms }}
+          INPUT_INCLUDE_SERVERS: ${{ inputs.include_servers }}
+          INPUT_SIGN_WINDOWS: ${{ inputs.sign_windows }}
+          INPUT_UPLOAD_TO_R2: ${{ inputs.upload_to_r2 }}
+          INPUT_GITHUB_RELEASE_DRAFT: ${{ inputs.github_release_draft }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BROWSEROS_CONFIG_URL: ${{ secrets.BROWSEROS_CONFIG_URL }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          AGENT_RUNNER_JWT_SECRET: ${{ secrets.AGENT_RUNNER_JWT_SECRET }}
+          ESIGNER_USERNAME: ${{ secrets.ESIGNER_USERNAME }}
+          ESIGNER_PASSWORD: ${{ secrets.ESIGNER_PASSWORD }}
+          ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          BROWSEROS_REPO_PATH: ${{ vars.BROWSEROS_REPO_PATH }}
+          BROWSEROS_CHROMIUM_SRC: ${{ vars.BROWSEROS_CHROMIUM_SRC }}
+        run: |
+          set -euo pipefail
+
+          product_selected() {
+            [ "$INPUT_PRODUCTS" = "all" ] || [ "$INPUT_PRODUCTS" = "$1" ]
+          }
+
+          platform_selected() {
+            [ "$INPUT_PLATFORMS" = "all" ] || [ "$INPUT_PLATFORMS" = "$1" ]
+          }
+
+          missing=()
+          require_value() {
+            local name="$1"
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          }
+
+          r2_needed=false
+          if [ "$INPUT_INCLUDE_SERVERS" = "true" ]; then
+            r2_needed=true
+          fi
+          if platform_selected linux || platform_selected windows; then
+            r2_needed=true
+          fi
+          if [ "$INPUT_GITHUB_RELEASE_DRAFT" = "true" ] && [ "$INPUT_UPLOAD_TO_R2" = "true" ]; then
+            r2_needed=true
+          fi
+          if [ "$r2_needed" = "true" ]; then
+            require_value R2_ACCOUNT_ID
+            require_value R2_ACCESS_KEY_ID
+            require_value R2_SECRET_ACCESS_KEY
+            require_value R2_BUCKET
+          fi
+
+          if [ "$INPUT_INCLUDE_SERVERS" = "true" ] && product_selected browseros; then
+            require_value BROWSEROS_CONFIG_URL
+            require_value POSTHOG_API_KEY
+            require_value SENTRY_DSN
+            # AGENT_RUNNER_JWT_SECRET is inlined when present but optional —
+            # matches release-server.yml and the descriptor's requiredInlineEnvKeys.
+          fi
+
+          if platform_selected windows && [ "$INPUT_SIGN_WINDOWS" = "true" ]; then
+            require_value ESIGNER_USERNAME
+            require_value ESIGNER_PASSWORD
+            require_value ESIGNER_TOTP_SECRET
+            require_value SPARKLE_PRIVATE_KEY
+          fi
+
+          if platform_selected macos; then
+            require_value BROWSEROS_REPO_PATH
+            require_value BROWSEROS_CHROMIUM_SRC
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::Missing required secret/variable(s) for this release selection: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Cancel WarpBuild nightly release runs
+        if: ${{ inputs.preempt_nightly }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cancelled=0
+          for status in in_progress queued; do
+            mapfile -t run_ids < <(
+              gh run list \
+                --workflow nightly-release.yml \
+                --status "$status" \
+                --limit 100 \
+                --json databaseId \
+                --jq '.[].databaseId'
+            )
+            for run_id in "${run_ids[@]}"; do
+              echo "Cancelling nightly-release.yml run $run_id ($status)"
+              if gh run cancel "$run_id"; then
+                cancelled=$((cancelled + 1))
+              else
+                echo "::warning::Could not cancel nightly-release.yml run $run_id; it may have already completed."
+              fi
+            done
+          done
+          echo "Cancelled $cancelled nightly-release.yml run(s)."
+
+  server_browseros:
+    name: BrowserOS server resources
+    needs: preflight
+    if: ${{ inputs.include_servers && (inputs.products == 'all' || inputs.products == 'browseros') }}
+    uses: ./.github/workflows/release-server.yml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      ref: ${{ github.ref_name }}
+      publish_ota: false
+    secrets: inherit
+
+  server_browserclaw:
+    name: BrowserClaw server resources
+    needs: preflight
+    if: ${{ inputs.include_servers && (inputs.products == 'all' || inputs.products == 'browserclaw') }}
+    uses: ./.github/workflows/release-claw-server.yml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      ref: ${{ github.ref_name }}
+      publish_ota: false
+    secrets: inherit
+
+  release_linux:
+    name: Linux browser builds
+    needs: [preflight, server_browseros, server_browserclaw]
+    if: >-
+      ${{
+        always() &&
+        (inputs.platforms == 'all' || inputs.platforms == 'linux') &&
+        needs.preflight.result == 'success' &&
+        (needs.server_browseros.result == 'success' || needs.server_browseros.result == 'skipped') &&
+        (needs.server_browserclaw.result == 'success' || needs.server_browserclaw.result == 'skipped')
+      }}
+    uses: ./.github/workflows/release-linux.yml
+    permissions:
+      actions: write
+      contents: read
+    with:
+      products: ${{ inputs.products }}
+      upload_to_r2: ${{ inputs.upload_to_r2 }}
+    secrets: inherit
+
+  release_windows:
+    name: Windows browser builds
+    needs: [preflight, server_browseros, server_browserclaw]
+    if: >-
+      ${{
+        always() &&
+        (inputs.platforms == 'all' || inputs.platforms == 'windows') &&
+        needs.preflight.result == 'success' &&
+        (needs.server_browseros.result == 'success' || needs.server_browseros.result == 'skipped') &&
+        (needs.server_browserclaw.result == 'success' || needs.server_browserclaw.result == 'skipped')
+      }}
+    uses: ./.github/workflows/release-windows.yml
+    permissions:
+      actions: write
+      contents: read
+    with:
+      products: ${{ inputs.products }}
+      upload_to_r2: ${{ inputs.upload_to_r2 }}
+      sign: ${{ inputs.sign_windows }}
+    secrets: inherit
+
+  release_macos:
+    name: macOS browser builds
+    needs: [preflight, server_browseros, server_browserclaw]
+    if: >-
+      ${{
+        always() &&
+        (inputs.platforms == 'all' || inputs.platforms == 'macos') &&
+        needs.preflight.result == 'success' &&
+        (needs.server_browseros.result == 'success' || needs.server_browseros.result == 'skipped') &&
+        (needs.server_browserclaw.result == 'success' || needs.server_browserclaw.result == 'skipped')
+      }}
+    concurrency:
+      group: macos-build
+      cancel-in-progress: false
+    uses: ./.github/workflows/release-macos.yml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      products: ${{ inputs.products }}
+      arch: ${{ inputs.macos_arch }}
+      bump: none
+      commit_version: false
+      upload_to_r2: ${{ inputs.upload_to_r2 }}
+      ref: ${{ github.ref_name }}
+    secrets: inherit
+
+  finalize:
+    name: Finalize
+    needs:
+      - preflight
+      - server_browseros
+      - server_browserclaw
+      - release_linux
+      - release_windows
+      - release_macos
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+      INPUT_PRODUCTS: ${{ inputs.products }}
+      INPUT_PLATFORMS: ${{ inputs.platforms }}
+      INPUT_INCLUDE_SERVERS: ${{ inputs.include_servers }}
+      INPUT_SIGN_WINDOWS: ${{ inputs.sign_windows }}
+      INPUT_MACOS_ARCH: ${{ inputs.macos_arch }}
+      INPUT_UPLOAD_TO_R2: ${{ inputs.upload_to_r2 }}
+      INPUT_GITHUB_RELEASE_DRAFT: ${{ inputs.github_release_draft }}
+      PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+      SERVER_BROWSEROS_RESULT: ${{ needs.server_browseros.result }}
+      SERVER_BROWSERCLAW_RESULT: ${{ needs.server_browserclaw.result }}
+      LINUX_RESULT: ${{ needs.release_linux.result }}
+      WINDOWS_RESULT: ${{ needs.release_windows.result }}
+      MACOS_RESULT: ${{ needs.release_macos.result }}
+    steps:
+      - name: Write release summary
+        run: |
+          set -euo pipefail
+          version="${VERSION:-unresolved}"
+
+          selected_products() {
+            case "$INPUT_PRODUCTS" in
+              all)
+                printf '%s\n' browseros browserclaw
+                ;;
+              browseros|browserclaw)
+                printf '%s\n' "$INPUT_PRODUCTS"
+                ;;
+            esac
+          }
+
+          selected_platforms() {
+            case "$INPUT_PLATFORMS" in
+              all)
+                printf '%s\n' linux windows macos
+                ;;
+              linux|windows|macos)
+                printf '%s\n' "$INPUT_PLATFORMS"
+                ;;
+            esac
+          }
+
+          product_prefix() {
+            case "$1" in
+              browseros) echo "BrowserOS" ;;
+              browserclaw) echo "BrowserClaw" ;;
+            esac
+          }
+
+          platform_result() {
+            case "$1" in
+              linux) echo "$LINUX_RESULT" ;;
+              windows) echo "$WINDOWS_RESULT" ;;
+              macos) echo "$MACOS_RESULT" ;;
+            esac
+          }
+
+          browser_artifacts() {
+            local product="$1"
+            local platform="$2"
+            local prefix
+            prefix="$(product_prefix "$product")"
+            case "$platform" in
+              linux)
+                printf '%s' "${product}-release-ci-linux-x64<br>${prefix}_v${version}_x64.AppImage<br>${prefix}_v${version}_amd64.deb"
+                ;;
+              windows)
+                printf '%s' "${product}-release-ci-windows-x64<br>${prefix}_v${version}_x64_installer.exe<br>${prefix}_v${version}_x64_installer.zip"
+                ;;
+              macos)
+                printf '%s' "${prefix}_v${version}_${INPUT_MACOS_ARCH}<br>${prefix}_v${version}_${INPUT_MACOS_ARCH}.dmg"
+                ;;
+            esac
+          }
+
+          {
+            echo "## Full release summary"
+            echo
+            echo "- Version: \`$version\`"
+            echo "- Products: \`$INPUT_PRODUCTS\`"
+            echo "- Platforms: \`$INPUT_PLATFORMS\`"
+            echo "- Server resources: \`$INPUT_INCLUDE_SERVERS\`"
+            echo "- Browser R2 upload: \`$INPUT_UPLOAD_TO_R2\`"
+            echo "- Windows signing: \`$INPUT_SIGN_WINDOWS\`"
+            echo "- Draft GitHub release: \`$INPUT_GITHUB_RELEASE_DRAFT\`"
+            echo
+            echo "### Browser builds"
+            echo
+            echo "| Product | Platform | Result | Version | Artifacts |"
+            echo "| --- | --- | --- | --- | --- |"
+            while IFS= read -r product; do
+              while IFS= read -r platform; do
+                result="$(platform_result "$platform")"
+                artifacts="$(browser_artifacts "$product" "$platform")"
+                echo "| \`$product\` | \`$platform\` | \`$result\` | \`$version\` | $artifacts |"
+              done < <(selected_platforms)
+            done < <(selected_products)
+            echo
+            echo "### Server resources"
+            echo
+            echo "| Product | Result | Version source | Artifacts |"
+            echo "| --- | --- | --- | --- |"
+            if [ "$INPUT_INCLUDE_SERVERS" = "true" ]; then
+              while IFS= read -r product; do
+                case "$product" in
+                  browseros)
+                    echo "| \`browseros\` | \`$SERVER_BROWSEROS_RESULT\` | per \`apps/server/package.json\` | browseros-server-resources-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64}.zip |"
+                    ;;
+                  browserclaw)
+                    echo "| \`browserclaw\` | \`$SERVER_BROWSERCLAW_RESULT\` | per \`apps/claw-server/package.json\` | browseros-claw-server-resources-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64}.zip<br>browseros-claw-onboard-resources.zip |"
+                    ;;
+                esac
+              done < <(selected_products)
+            else
+              echo "| all selected products | \`skipped\` | not run | include_servers=false |"
+            fi
+            echo
+            echo "### Promotion"
+            echo
+            echo "This workflow stops at versioned R2 staging paths and draft GitHub release assets. Promote manually after inspection with \`browseros release publish\` and \`browseros release appcast --publish\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Evaluate draft release gate
+        id: release_gate
+        run: |
+          set -euo pipefail
+
+          selected_products() {
+            case "$INPUT_PRODUCTS" in
+              all) printf '%s\n' browseros browserclaw ;;
+              browseros|browserclaw) printf '%s\n' "$INPUT_PRODUCTS" ;;
+            esac
+          }
+
+          selected_platforms() {
+            case "$INPUT_PLATFORMS" in
+              all) printf '%s\n' linux windows macos ;;
+              linux|windows|macos) printf '%s\n' "$INPUT_PLATFORMS" ;;
+            esac
+          }
+
+          platform_result() {
+            case "$1" in
+              linux) echo "$LINUX_RESULT" ;;
+              windows) echo "$WINDOWS_RESULT" ;;
+              macos) echo "$MACOS_RESULT" ;;
+            esac
+          }
+
+          should_create=true
+          reasons=()
+
+          if [ "$INPUT_GITHUB_RELEASE_DRAFT" != "true" ]; then
+            should_create=false
+            reasons+=("github_release_draft=false")
+          fi
+          if [ "$INPUT_UPLOAD_TO_R2" != "true" ]; then
+            should_create=false
+            reasons+=("upload_to_r2=false")
+          fi
+          if [ -z "${VERSION:-}" ]; then
+            should_create=false
+            reasons+=("release version was not resolved")
+          fi
+          if [ "$PREFLIGHT_RESULT" != "success" ]; then
+            should_create=false
+            reasons+=("preflight result is $PREFLIGHT_RESULT")
+          fi
+
+          if [ "$INPUT_INCLUDE_SERVERS" = "true" ]; then
+            while IFS= read -r product; do
+              case "$product" in
+                browseros)
+                  if [ "$SERVER_BROWSEROS_RESULT" != "success" ]; then
+                    should_create=false
+                    reasons+=("BrowserOS server result is $SERVER_BROWSEROS_RESULT")
+                  fi
+                  ;;
+                browserclaw)
+                  if [ "$SERVER_BROWSERCLAW_RESULT" != "success" ]; then
+                    should_create=false
+                    reasons+=("BrowserClaw server result is $SERVER_BROWSERCLAW_RESULT")
+                  fi
+                  ;;
+              esac
+            done < <(selected_products)
+          fi
+
+          while IFS= read -r platform; do
+            result="$(platform_result "$platform")"
+            if [ "$result" != "success" ]; then
+              should_create=false
+              reasons+=("$platform result is $result")
+            fi
+          done < <(selected_platforms)
+
+          products="$(selected_products | xargs)"
+          reason="ready"
+          if [ "${#reasons[@]}" -gt 0 ]; then
+            reason="$(printf '%s; ' "${reasons[@]}")"
+            reason="${reason%; }"
+          fi
+
+          {
+            echo "should_create=$should_create"
+            echo "products=$products"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo
+            if [ "$should_create" = "true" ]; then
+              echo "Draft GitHub release gate: ready."
+            else
+              echo "Draft GitHub release gate: skipped - $reason."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v7
+        if: ${{ steps.release_gate.outputs.should_create == 'true' }}
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: astral-sh/setup-uv@v8.2.0
+        if: ${{ steps.release_gate.outputs.should_create == 'true' }}
+
+      - name: Create or refresh draft GitHub release
+        if: ${{ steps.release_gate.outputs.should_create == 'true' }}
+        working-directory: packages/browseros
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          PRODUCTS: ${{ steps.release_gate.outputs.products }}
+        run: |
+          set -euo pipefail
+
+          normalize_tag() {
+            local version="$1"
+            local major minor build _rest
+            IFS='.' read -r major minor build _rest <<< "$version"
+            echo "v$major.$minor.$build"
+          }
+
+          product_prefix() {
+            case "$1" in
+              browseros) echo "BrowserOS" ;;
+              browserclaw) echo "BrowserClaw" ;;
+              *)
+                echo "::error::Unknown product: $1"
+                exit 1
+                ;;
+            esac
+          }
+
+          tag="$(normalize_tag "$VERSION")"
+          for product in $PRODUCTS; do
+            prefix="$(product_prefix "$product")"
+            if release_json="$(gh release view "$tag" --json isDraft,assets --jq '{isDraft, assets: [.assets[].name]}' 2>/dev/null)"; then
+              is_draft="$(jq -r '.isDraft' <<< "$release_json")"
+              if [ "$is_draft" != "true" ]; then
+                echo "::error::GitHub release $tag already exists and is not a draft; refusing to modify live release assets."
+                exit 1
+              fi
+
+              mapfile -t assets < <(
+                jq -r --arg prefix "${prefix}_v${VERSION}_" \
+                  '.assets[] | select(startswith($prefix))' <<< "$release_json"
+              )
+              for asset in "${assets[@]}"; do
+                echo "Deleting stale draft asset $asset from $tag"
+                gh release delete-asset "$tag" "$asset" --yes
+              done
+            fi
+
+            uv run browseros release github create \
+              --version "$VERSION" \
+              --draft \
+              --product "$product"
+          done

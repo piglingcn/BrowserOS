@@ -1,0 +1,15 @@
+diff --git a/chrome/common/extensions/api/_api_features.json b/chrome/common/extensions/api/_api_features.json
+index 61747d2e11813..8ed80de268684 100644
+--- a/chrome/common/extensions/api/_api_features.json
++++ b/chrome/common/extensions/api/_api_features.json
+@@ -186,6 +186,10 @@
+     ],
+     "contexts": ["privileged_extension"]
+   }],
++  "browserOS": {
++    "dependencies": ["permission:browserOS"],
++    "contexts": ["privileged_extension"]
++  },
+   "browsingData": {
+     "dependencies": ["permission:browsingData"],
+     "contexts": ["privileged_extension"]

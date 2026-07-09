@@ -1,0 +1,16 @@
+diff --git a/chrome/common/BUILD.gn b/chrome/common/BUILD.gn
+index 1a692fe440945..a82aaabd142a4 100644
+--- a/chrome/common/BUILD.gn
++++ b/chrome/common/BUILD.gn
+@@ -596,7 +596,10 @@ static_library("constants") {
+   }
+   if (is_linux || is_chromeos) {
+     sources += [ "chrome_paths_linux.cc" ]
+-    deps += [ ":channel_info" ]
++    deps += [
++      ":channel_info",
++      "//chrome/browser/browseros:buildflags",
++    ]
+   }
+   if (is_mac) {
+     sources += [ "chrome_paths_mac.mm" ]
