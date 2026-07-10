@@ -15,10 +15,6 @@ from ...lib.utils import log_info, log_success
 _DARWIN_CANDIDATES = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    # User-level installs (e.g. the self-hosted mac runner keeps Chrome
-    # in ~/Applications).
-    "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "~/Applications/Chromium.app/Contents/MacOS/Chromium",
 )
 _LINUX_CANDIDATES = (
     "google-chrome-stable",
@@ -34,7 +30,7 @@ _WINDOWS_CANDIDATES = (
 
 
 def _is_valid_binary(path: str) -> bool:
-    p = Path(path).expanduser()
+    p = Path(path)
     if p.exists() and p.is_file():
         return os.access(p, os.X_OK)
     return subprocess.run(["which", path], capture_output=True).returncode == 0
@@ -71,9 +67,8 @@ def find_chrome_binary(
         raise RuntimeError(f"Unsupported platform for CRX packing: {system}")
 
     for binary in candidates:
-        expanded = str(Path(binary).expanduser())
-        if is_valid(expanded):
-            return expanded
+        if is_valid(binary):
+            return binary
 
     raise RuntimeError(
         "Chrome/Chromium binary not found — install Chrome, set CHROME_BINARY, "

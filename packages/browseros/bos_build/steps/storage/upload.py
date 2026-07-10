@@ -193,25 +193,6 @@ def _get_artifact_key(filename: str, platform: str) -> str:
     return Path(filename).stem
 
 
-def _product_artifact_filename_prefix(ctx: Context) -> str:
-    """Return the exact filename prefix for this product/version's artifacts."""
-    return f"{ctx.product.artifact_prefix}_v{ctx.get_semantic_version()}_"
-
-
-def _filter_product_artifacts(ctx: Context, artifacts: List[Path]) -> List[Path]:
-    expected_prefix = _product_artifact_filename_prefix(ctx)
-    filtered = [
-        artifact for artifact in artifacts if artifact.name.startswith(expected_prefix)
-    ]
-    skipped = [artifact.name for artifact in artifacts if artifact not in filtered]
-    if skipped:
-        log_warning(
-            "Ignoring artifact(s) that do not belong to "
-            f"{ctx.product.id} v{ctx.get_semantic_version()}: {', '.join(skipped)}"
-        )
-    return filtered
-
-
 def detect_artifacts(ctx: Context) -> List[Path]:
     """Detect artifacts in dist directory based on platform
 
@@ -233,7 +214,7 @@ def detect_artifacts(ctx: Context) -> List[Path]:
         artifacts.extend(dist_dir.glob("*.AppImage"))
         artifacts.extend(dist_dir.glob("*.deb"))
 
-    return sorted(_filter_product_artifacts(ctx, artifacts))
+    return sorted(artifacts)
 
 
 def upload_release_artifacts(

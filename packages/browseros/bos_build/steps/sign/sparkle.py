@@ -14,21 +14,12 @@ from ...lib.utils import (
 )
 
 
-def find_signable_artifacts(
-    dist_dir: Path, filename_prefix: str | None = None
-) -> List[Path]:
+def find_signable_artifacts(dist_dir: Path) -> List[Path]:
     """Update artifacts the appcast points at: DMGs on macOS, the installer
     EXE on Windows (WinSparkle downloads and runs the installer directly;
     the portable ZIP is not an update enclosure, so it is not signed).
     """
-    artifacts = sorted(dist_dir.glob("*.dmg")) + sorted(dist_dir.glob("*.exe"))
-    if filename_prefix:
-        artifacts = [
-            artifact
-            for artifact in artifacts
-            if artifact.name.startswith(filename_prefix)
-        ]
-    return artifacts
+    return sorted(dist_dir.glob("*.dmg")) + sorted(dist_dir.glob("*.exe"))
 
 
 @step("sparkle_sign", phase="sign", optional=True, env=("SPARKLE_PRIVATE_KEY",))
@@ -41,7 +32,9 @@ class SparkleSignModule(Step):
 
     def validate(self, ctx: Context) -> None:
         if not ctx.env.has_sparkle_key():
-            raise ValidationError("SPARKLE_PRIVATE_KEY environment variable not set")
+            raise ValidationError(
+                "SPARKLE_PRIVATE_KEY environment variable not set"
+            )
 
     def execute(self, ctx: Context) -> None:
         log_info("\n🔐 Signing update artifacts with Sparkle...")
@@ -51,10 +44,7 @@ class SparkleSignModule(Step):
             log_warning(f"Dist directory not found: {dist_dir}")
             return
 
-        artifact_files = find_signable_artifacts(
-            dist_dir,
-            f"{ctx.product.artifact_prefix}_v{ctx.get_semantic_version()}_",
-        )
+        artifact_files = find_signable_artifacts(dist_dir)
         if not artifact_files:
             log_warning("No signable artifacts (*.dmg, *.exe) found to sign")
             return
