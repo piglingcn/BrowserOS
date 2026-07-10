@@ -347,26 +347,6 @@ jobs:
         if: always()
         run: df -h || true
 
-      - name: Resolve artifact filename prefix
-        id: artifact_prefix
-        if: always()
-        env:
-          PRODUCT: ${{ inputs.product }}
-        run: |
-          set -euo pipefail
-          case "$PRODUCT" in
-            browseros)
-              echo "value=BrowserOS" >> "$GITHUB_OUTPUT"
-              ;;
-            browserclaw)
-              echo "value=BrowserClaw" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::error::product must be one of: browseros, browserclaw"
-              exit 1
-              ;;
-          esac
-
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -376,8 +356,8 @@ jobs:
           retention-days: 14
           compression-level: 0
           path: |
-            packages/browseros/releases/*/${{ steps.artifact_prefix.outputs.value }}_*.dmg
-            packages/browseros/releases/*/${{ steps.artifact_prefix.outputs.value }}_*.AppImage
-            packages/browseros/releases/*/${{ steps.artifact_prefix.outputs.value }}_*.deb
-            packages/browseros/releases/*/${{ steps.artifact_prefix.outputs.value }}_*_installer.exe
-            packages/browseros/releases/*/${{ steps.artifact_prefix.outputs.value }}_*_installer.zip
+            packages/browseros/releases/*/*.dmg
+            packages/browseros/releases/*/*.AppImage
+            packages/browseros/releases/*/*.deb
+            packages/browseros/releases/*/*_installer.exe
+            packages/browseros/releases/*/*_installer.zip
