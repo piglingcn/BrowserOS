@@ -6,6 +6,9 @@ import { SidebarLayout } from '@/components/layout/SidebarLayout'
 import { AgentCommandConversation } from '@/screens/agent-command/AgentCommandConversation'
 import { AgentCommandHome } from '@/screens/agent-command/AgentCommandHome'
 import { AgentCommandLayout } from '@/screens/agent-command/AgentCommandLayout'
+import { DemoImagePage } from '@/screens/agent-command/DemoImagePage'
+import { DemoResumePage } from '@/screens/agent-command/DemoResumePage'
+import { DemoVideoPage } from '@/screens/agent-command/DemoVideoPage'
 import { AISettingsPage } from '@/screens/ai-settings/AISettingsPage'
 import { LoginPage } from '@/screens/auth/LoginPage'
 import { LogoutPage } from '@/screens/auth/LogoutPage'
@@ -86,7 +89,7 @@ export const App: FC = () => {
             </Route>
             <Route path="chat" element={<NewTabChat />} />
             <Route path="personalize" element={<Personalize />} />
-          </Route>
+            </Route>
 
           <Route path="connect-apps" element={<ConnectMCP />} />
           <Route path="scheduled" element={<ScheduledTasksPage />} />
@@ -108,6 +111,10 @@ export const App: FC = () => {
             <Route path="*" element={<Navigate to="/settings/ai" replace />} />
           </Route>
         </Route>
+
+        <Route path="demo-image" element={<DemoImagePage />} />
+        <Route path="demo-video" element={<DemoVideoPage />} />
+        <Route path="demo-resume" element={<DemoResumePage />} />
 
         <Route path="onboarding">
           <Route index element={<Onboarding />} />

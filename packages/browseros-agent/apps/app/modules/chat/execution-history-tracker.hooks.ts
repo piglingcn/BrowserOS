@@ -66,24 +66,25 @@ export function useExecutionHistoryTracker() {
   const writeQueueRef = useRef(Promise.resolve())
 
   const persistTask = useCallback((task: ExecutionTaskRecord) => {
-    const taskHash = JSON.stringify(task)
-    if (taskHash === lastSavedHashRef.current) return
-
-    activeTaskRef.current = task
-    writeQueueRef.current = writeQueueRef.current
-      .then(async () => {
-        await upsertConversationExecutionTask(task)
-        lastSavedHashRef.current = taskHash
-      })
-      .catch((error) => {
-        sentry.captureException(error, {
-          extra: {
-            message: 'Failed to persist execution history task',
-            conversationId: task.conversationId,
-            taskId: task.id,
-          },
-        })
-      })
+    // 禁用 execution-history 持久化，防止内存飙升
+    // const taskHash = JSON.stringify(task)
+    // if (taskHash === lastSavedHashRef.current) return
+    //
+    // activeTaskRef.current = task
+    // writeQueueRef.current = writeQueueRef.current
+    //   .then(async () => {
+    //     await upsertConversationExecutionTask(task)
+    //     lastSavedHashRef.current = taskHash
+    //   })
+    //   .catch((error) => {
+    //     sentry.captureException(error, {
+    //       extra: {
+    //         message: 'Failed to persist execution history task',
+    //         conversationId: task.conversationId,
+    //         taskId: task.id,
+    //       },
+    //     })
+    //   })
   }, [])
 
   const startTask = useCallback(

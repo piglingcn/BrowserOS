@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 import { Bot } from 'lucide-react'
-import { type FC, Fragment } from 'react'
+import { type FC, Fragment, useState, useEffect } from 'react'
 import {
   Conversation,
   ConversationContent,
@@ -54,11 +54,14 @@ export const ChatMessages: FC<ChatMessagesProps> = ({
 }) => {
   const isStreaming = status === 'streaming' || status === 'submitted'
 
+  // 只显示最后一条消息
+  const visibleMessages = messages.length > 0 ? [messages[messages.length - 1]] : []
+
   return (
     <>
       <Conversation className="ph-mask">
         <ConversationContent>
-          {messages.map((message, messageIndex) => {
+          {visibleMessages.map((message, messageIndex) => {
             const action = getActionForMessage?.(message)
             const isLastMessage = messageIndex === messages.length - 1
             const segments = getMessageSegments(

@@ -79,11 +79,12 @@ export default defineBackground(() => {
         windowId: currentTab.windowId,
       })
 
-      if (opened) {
-        setTimeout(() => {
-          searchActionsStorage.setValue(messageData.data)
-        }, 500)
-      }
+      setTimeout(async () => {
+        // 先 setValue(null) 清除旧值，再写入新值，确保 watch 触发
+        await searchActionsStorage.setValue(null)
+        await new Promise(r => setTimeout(r, 100))
+        await searchActionsStorage.setValue(messageData.data)
+      }, 1500)
     }
   })
 

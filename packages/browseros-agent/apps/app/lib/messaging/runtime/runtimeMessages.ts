@@ -5,6 +5,7 @@ export const RuntimeMessageType = {
   authSuccess: 'runtime.authSuccess',
   stopAgent: 'runtime.stopAgent',
   sidePanelScopeChanged: 'runtime.sidePanelScopeChanged',
+  sendAgentQuery: 'runtime.sendAgentQuery',
 } as const
 
 export interface RuntimeTabIdResponse {
@@ -19,6 +20,11 @@ export interface RuntimeSidePanelScopeChangedData {
   perWindow: boolean
 }
 
+export interface RuntimeSendAgentQueryData {
+  query: string
+  mode: 'chat' | 'agent'
+}
+
 type RuntimeMessagesProtocol = {
   [RuntimeMessageType.getTabId](): RuntimeTabIdResponse
   [RuntimeMessageType.authSuccess](): void
@@ -26,6 +32,7 @@ type RuntimeMessagesProtocol = {
   [RuntimeMessageType.sidePanelScopeChanged](
     data: RuntimeSidePanelScopeChangedData,
   ): void
+  [RuntimeMessageType.sendAgentQuery](data: RuntimeSendAgentQueryData): { received: boolean }
 }
 
 const { sendMessage, onMessage } =

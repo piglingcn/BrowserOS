@@ -28,6 +28,10 @@ import { ChatError } from './ChatError'
 import { ChatFooter } from './ChatFooter'
 import { ChatMessages } from './ChatMessages'
 import { RemoteHermesBootPill } from './RemoteHermesBootPill'
+import {
+  onRuntimeMessage,
+  RuntimeMessageType,
+} from '@/lib/messaging/runtime/runtimeMessages'
 
 /**
  * @public
@@ -75,6 +79,21 @@ export const Chat = () => {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Listen for agent queries sent from other extension pages
+  useEffect(() => {
+    const unwatch = onRuntimeMessage(
+      RuntimeMessageType.sendAgentQuery,
+      (data) => {
+        if (data?.query) {
+          setMode(data.mode)
+          sendMessage({ text: data.query })
+          return { received: true }
+        }
+      },
+    )
+    return () => unwatch()
+  }, [sendMessage, setMode])
 
   useEffect(() => {
     ;(async () => {

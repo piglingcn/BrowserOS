@@ -49,6 +49,8 @@ import {
 import type { ChatMode } from './chat-types'
 import { addContentFilterNotice } from './content-filter-notice'
 import { useExecutionHistoryTracker } from './execution-history-tracker.hooks'
+
+const MAX_CONTEXT_MESSAGES = 20
 import { useNotifyActiveTab } from './notify-active-tab.hooks'
 import { useRemoteConversationSave } from './remote-conversation-save.hooks'
 import { toLlmProviderConfig } from './sidepanel-chat-targets'
@@ -347,10 +349,11 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         })
 
         const declinedApps = await declinedAppsStorage.getValue()
-        const previousMessages = messagesRef.current
+        // 只保留最近的 N 条消息作为上下文，防止内存无限膨胀
+        const recentMessages = messagesRef.current.slice(-MAX_CONTEXT_MESSAGES)
         const history =
-          previousMessages.length > 0
-            ? formatConversationHistory(previousMessages)
+          recentMessages.length > 0
+            ? formatConversationHistory(recentMessages)
             : undefined
         const previousConversation = history?.length ? history : undefined
 
