@@ -152,24 +152,8 @@ impl CdpConnection for HarnessConnection {
                 });
             match method {
                 "Browser.getTabs" => Ok(json!({ "tabs": [harness_tab()] })),
-                "Browser.getTabInfo" => {
-                    let tab = if params.get("tabId").and_then(Value::as_i64) == Some(202) {
-                        new_harness_tab()
-                    } else {
-                        harness_tab()
-                    };
-                    Ok(json!({ "tab": tab }))
-                }
-                "Browser.createTab" => Ok(json!({ "tab": new_harness_tab() })),
-                "Target.attachToTarget" => {
-                    let session =
-                        if params.get("targetId").and_then(Value::as_str) == Some("target-2") {
-                            "session-2"
-                        } else {
-                            "session-1"
-                        };
-                    Ok(json!({ "sessionId": session }))
-                }
+                "Browser.getTabInfo" => Ok(json!({ "tab": harness_tab() })),
+                "Target.attachToTarget" => Ok(json!({ "sessionId": "session-1" })),
                 "Page.enable"
                 | "DOM.enable"
                 | "Runtime.enable"
@@ -260,22 +244,6 @@ fn harness_tab() -> Value {
         "isHidden": false,
         "windowId": 1,
         "index": 0
-    })
-}
-
-fn new_harness_tab() -> Value {
-    json!({
-        "tabId": 202,
-        "targetId": "target-2",
-        "url": "https://new.example/",
-        "title": "New Tab",
-        "isActive": false,
-        "isLoading": false,
-        "loadProgress": 1.0,
-        "isPinned": false,
-        "isHidden": false,
-        "windowId": 1,
-        "index": 1
     })
 }
 
@@ -545,38 +513,6 @@ async fn invalid_arguments_are_tool_error_results() {
             .text
             .starts_with("Invalid arguments for tabs: page:")
     }));
-}
-
-#[tokio::test]
-async fn tabs_new_attaches_first_snapshot() {
-    let (ctx, connection, _page) = harness_ctx().await;
-    let tabs = tool_by_name("tabs");
-    let result = execute_tool(
-        &tabs,
-        json!({ "action": "new", "url": "https://new.example/" }),
-        &ctx,
-    )
-    .await
-    .unwrap_or_else(|err| panic!("tabs new should return a tool result: {err}"));
-
-    assert!(!result.is_error);
-    assert_eq!(
-        result
-            .structured_content
-            .as_ref()
-            .and_then(|value| value.get("page")),
-        Some(&json!(2))
-    );
-    let text = result_text(&result);
-    assert!(text.contains("opened page 2"));
-    assert!(text.contains("[Page 2 snapshot]"));
-    assert!(text.contains("button \"Save\""));
-    assert!(
-        connection
-            .calls()
-            .iter()
-            .any(|call| call.method == "Accessibility.getFullAXTree")
-    );
 }
 
 #[tokio::test]

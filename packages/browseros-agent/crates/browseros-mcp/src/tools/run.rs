@@ -30,7 +30,7 @@ const MAX_LOG_ENTRIES: usize = 1_000;
 const MAX_LOG_BYTES: usize = 1_000_000;
 const MAX_RETURN_VALUE_BYTES: usize = 2_000_000;
 
-const DESCRIPTION: &str = r#"Do multi-step flows - pagination, bulk extraction, repeated act/read loops - in ONE call: JavaScript against the `browser` SDK in the server runtime. `console.log` is captured; `return` a value to read it back; exceptions come back as a result, not thrown.
+const DESCRIPTION: &str = r#"Run JavaScript against the `browser` SDK in the server runtime for multi-step flows and data extraction that would otherwise take many tool calls. `console.log` is captured; `return` a value to read it back; exceptions come back as a result, not a thrown error.
 
 Available as `browser`:
   browser.pages.list() / newPage(url) / close(pageId) / getInfo(pageId)

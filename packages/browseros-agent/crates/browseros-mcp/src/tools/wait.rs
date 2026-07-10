@@ -13,9 +13,12 @@ pub const DEFAULT_PAUSE_MS: u64 = 2_000;
 const DEFAULT_WAIT_TIMEOUT_MS: u64 = 2_000;
 const MAX_WAIT_TIMEOUT_MS: u64 = 30_000;
 const DESCRIPTION: &str = "\
-Wait on a signal: for=\"text\" (substring appears) or for=\"selector\" (CSS selector matches) \
-beat a blind pause. for=\"time\" (default) pauses value ms (default 2000) - last resort. \
-Best of all: act and read the diff instead of waiting.";
+Pause before continuing. Prefer acting directly and reading the diff; \
+use wait only when there is no reliable UI signal yet. \
+for=\"time\" (default) pauses for value ms; \"text\" waits for a substring to appear; \
+\"selector\" waits for a CSS selector to match. \
+value is optional — for \"time\" it defaults to 2000ms, \
+so calling wait with just a page pauses ~2s.";
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]

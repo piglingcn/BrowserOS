@@ -13,12 +13,10 @@ use serde_json::{Value, json};
 
 const DESCRIPTION: &str = "\
 Act on the page using refs from the last snapshot. \
-kinds: click, type (into focused element), fill (ref+value, or many via fields[]), \
-press (key/combo), hover, focus, check, uncheck, select (option value), scroll, drag. \
+kinds: click, type (into focused element), fill (one field via ref+value, or many via fields[]), \
+press (a key/combo), hover, focus, check, uncheck, select (an option value), scroll, drag. \
 dialog_accept/dialog_dismiss handle pending JavaScript dialogs. \
-ALWAYS fill a whole form in one call via fields[], never field-by-field. \
-Reads back a post-settle diff - no follow-up diff/snapshot needed; \
-re-snapshot only for fresh refs.";
+Reads back a diff of what changed - re-snapshot if you need fresh refs.";
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
