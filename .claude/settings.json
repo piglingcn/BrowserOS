@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf .wxt dist)",
+      "Bash(bun --env-file=.env.development wxt build --mode development)"
+    ]
+  }
+}

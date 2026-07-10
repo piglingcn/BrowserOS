@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鼠标事件检测器 - 全页追踪</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f5;
+    padding: 20px;
+    min-height: 100vh;
+  }
+  .container {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+    padding: 32px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 20px; margin-bottom: 24px; color: #333; }
+
+  /* 全局鼠标坐标大显示 */
+  .global-coords {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    background: rgba(0,0,0,0.8);
+    color: #7dd3fc;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 18px;
+    z-index: 9999;
+    pointer-events: none;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  }
+  .global-coords .label { color: #888; font-size: 12px; }
+
+  .buttons {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .btn {
+    padding: 12px 28px;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: #4F46E5; color: #fff; }
+  .btn-primary:hover { background: #4338CA; }
+  .btn-success { background: #10B981; color: #fff; }
+  .btn-success:hover { background: #059669; }
+
+  .area {
+    width: 100%;
+    height: 280px;
+    border: 2px dashed #ddd;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+    font-size: 14px;
+    user-select: none;
+    position: relative;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: default;
+  }
+  .area.hovering { border-color: #4F46E5; background: #EEF2FF; }
+  .area.pressing { border-color: #DC2626; background: #FEF2F2; }
+
+  .log-section { margin-top: 24px; }
+  .log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .log-header h2 { font-size: 14px; color: #666; font-weight: 500; }
+  .btn-clear {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #666;
+  }
+  .btn-clear:hover { background: #f0f0f0; }
+
+  .log-list {
+    background: #1a1a2e;
+    border-radius: 10px;
+    padding: 12px;
+    height: 350px;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .log-list .line { color: #a0a0b8; white-space: pre; padding: 1px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .log-list .line .time { color: #6b6b8a; }
+  .log-list .line .event { color: #7dd3fc; font-weight: 600; }
+  .log-list .line .coords { color: #fbbf24; }
+  .log-list .line .detail { color: #a7f3d0; }
+  .log-list .line-marker { padding: 2px 0; color: #6b6b8a; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .log-list::-webkit-scrollbar { width: 4px; }
+  .log-list::-webkit-scrollbar-track { background: transparent; }
+  .log-list::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+
+  .event-summary { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .event-summary .stat { font-size: 13px; color: #666; }
+  .event-summary .stat span { font-weight: 600; color: #333; }
+</style>
+</head>
+<body>
+
+<div class="global-coords" id="globalCoords">
+  <div class="label">鼠标位置</div>
+  <span id="coordX">0</span>, <span id="coordY">0</span>
+</div>
+
+<div class="container">
+  <h1>🖱️ 鼠标事件检测器</h1>
+
+  <div class="buttons">
+    <button class="btn btn-primary" id="btnA">按钮 A</button>
+    <button class="btn btn-success" id="btnB">按钮 B</button>
+  </div>
+
+  <div class="area" id="area">
+    <span>在此区域移动／点击鼠标</span>
+  </div>
+
+  <div class="log-section">
+    <div class="log-header">
+      <h2>事件日志</h2>
+      <div>
+        <span class="stat" id="moveStat">mouseMoved: <span id="moveCount">0</span></span>
+        <button class="btn-clear" id="clearLog" style="margin-left:12px;">清除</button>
+      </div>
+    </div>
+    <div class="log-list" id="logList"></div>
+  </div>
+</div>
+
+<script>
+  const logList = document.getElementById('logList')
+  const area = document.getElementById('area')
+  const btnA = document.getElementById('btnA')
+  const btnB = document.getElementById('btnB')
+  const clearBtn = document.getElementById('clearLog')
+  const coordX = document.getElementById('coordX')
+  const coordY = document.getElementById('coordY')
+  const moveCountSpan = document.getElementById('moveCount')
+
+  let logCount = 0
+  let moveCount = 0
+  const MAX_LOG = 1000
+
+  function log(eventName, clientX, clientY, detail = '') {
+    logCount++
+    if (logCount > MAX_LOG) return
+
+    const line = document.createElement('div')
+    line.className = 'line'
+    const now = new Date()
+    const time = now.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0')
+    line.innerHTML = `<span class="time">[${time}]</span> <span class="event">${eventName.padEnd(18)}</span> <span class="coords">(${String(clientX).padStart(4)}, ${String(clientY).padStart(4)})</span> <span class="detail">${detail}</span>`
+    logList.appendChild(line)
+    logList.scrollTop = logList.scrollHeight
+  }
+
+  function logMarker(text) {
+    const line = document.createElement('div')
+    line.className = 'line-marker'
+    line.textContent = `── ${text} ──`
+    logList.appendChild(line)
+    logList.scrollTop = logList.scrollHeight
+  }
+
+  // ============ 全页面鼠标追踪 ============
+  document.addEventListener('mousemove', (e) => {
+    coordX.textContent = e.clientX
+    coordY.textContent = e.clientY
+    moveCount++
+    moveCountSpan.textContent = moveCount
+    log('mousemove', e.clientX, e.clientY)
+  })
+
+  document.addEventListener('mousedown', (e) => {
+    log('mousedown', e.clientX, e.clientY, `button:${e.button}`)
+    if (e.target === area) area.classList.add('pressing')
+  })
+
+  document.addEventListener('mouseup', (e) => {
+    area.classList.remove('pressing')
+    log('mouseup', e.clientX, e.clientY, `button:${e.button}`)
+  })
+
+  document.addEventListener('click', (e) => {
+    const target = e.target.id || e.target.tagName.toLowerCase()
+    log('click', e.clientX, e.clientY, `button:${e.button} target:${target}`)
+  })
+
+  document.addEventListener('dblclick', (e) => {
+    log('dblclick', e.clientX, e.clientY, `target:${e.target.id || e.target.tagName}`)
+  })
+
+  document.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    log('contextmenu', e.clientX, e.clientY)
+  })
+
+  // ============ Area 独立追踪（hover 效果） ============
+  area.addEventListener('mouseenter', () => {
+    area.classList.add('hovering')
+  })
+
+  area.addEventListener('mouseleave', () => {
+    area.classList.remove('hovering')
+    area.classList.remove('pressing')
+  })
+
+  // ============ 按钮事件 ============
+  btnA.addEventListener('click', (e) => {
+    logMarker('点击了 按钮 A')
+    log('(btnA click)', e.clientX, e.clientY)
+  })
+
+  btnB.addEventListener('click', (e) => {
+    logMarker('点击了 按钮 B')
+    log('(btnB click)', e.clientX, e.clientY)
+  })
+
+  // ============ 清除日志 ============
+  clearBtn.addEventListener('click', () => {
+    logList.innerHTML = ''
+    logCount = 0
+    moveCount = 0
+    moveCountSpan.textContent = '0'
+    logMarker('日志已清除')
+  })
+
+  logMarker('检测器已启动，整个页面都会记录鼠标事件')
+  logMarker('右上角固定显示当前鼠标坐标')
+</script>
+</body>
+</html>

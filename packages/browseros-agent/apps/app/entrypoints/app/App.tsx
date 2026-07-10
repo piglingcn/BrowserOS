@@ -6,7 +6,9 @@ import { SidebarLayout } from '@/components/layout/SidebarLayout'
 import { AgentCommandConversation } from '@/screens/agent-command/AgentCommandConversation'
 import { AgentCommandHome } from '@/screens/agent-command/AgentCommandHome'
 import { AgentCommandLayout } from '@/screens/agent-command/AgentCommandLayout'
+import { DemoDouyinPage } from '@/screens/agent-command/DemoDouyinPage'
 import { DemoImagePage } from '@/screens/agent-command/DemoImagePage'
+import { DemoPddPage } from '@/screens/agent-command/DemoPddPage'
 import { DemoResumePage } from '@/screens/agent-command/DemoResumePage'
 import { DemoVideoPage } from '@/screens/agent-command/DemoVideoPage'
 import { AISettingsPage } from '@/screens/ai-settings/AISettingsPage'
@@ -89,7 +91,7 @@ export const App: FC = () => {
             </Route>
             <Route path="chat" element={<NewTabChat />} />
             <Route path="personalize" element={<Personalize />} />
-            </Route>
+          </Route>
 
           <Route path="connect-apps" element={<ConnectMCP />} />
           <Route path="scheduled" element={<ScheduledTasksPage />} />
@@ -115,6 +117,8 @@ export const App: FC = () => {
         <Route path="demo-image" element={<DemoImagePage />} />
         <Route path="demo-video" element={<DemoVideoPage />} />
         <Route path="demo-resume" element={<DemoResumePage />} />
+        <Route path="demo-douyin" element={<DemoDouyinPage />} />
+        <Route path="demo-pdd" element={<DemoPddPage />} />
 
         <Route path="onboarding">
           <Route index element={<Onboarding />} />

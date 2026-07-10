@@ -3,6 +3,8 @@ import {
   Briefcase,
   FileText,
   Image,
+  Music,
+  ShoppingBag,
   Sparkles,
   Video,
 } from 'lucide-react'
@@ -217,6 +219,28 @@ export const AgentCommandHome: FC = () => {
                 <Briefcase className="h-8 w-8 text-blue-500" />
               </div>
               <span className="font-medium text-sm">BOSS直聘</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/demo-douyin')}
+              className="flex flex-col items-center gap-3 rounded-2xl border border-border/50 bg-card p-6 transition-all duration-200 hover:-translate-y-1 hover:border-pink-500/50 hover:bg-pink-500/5 hover:shadow-lg"
+            >
+              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500/20 to-red-500/20">
+                <Music className="h-8 w-8 text-pink-500" />
+              </div>
+              <span className="font-medium text-sm">抖音热门</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/demo-pdd')}
+              className="flex flex-col items-center gap-3 rounded-2xl border border-border/50 bg-card p-6 transition-all duration-200 hover:-translate-y-1 hover:border-red-500/50 hover:bg-red-500/5 hover:shadow-lg"
+            >
+              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-red-500/20 to-orange-500/20">
+                <ShoppingBag className="h-8 w-8 text-red-500" />
+              </div>
+              <span className="font-medium text-sm">拼多多分析</span>
             </button>
           </div>
 
