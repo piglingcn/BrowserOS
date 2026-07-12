@@ -1,18 +1,7 @@
 commit-msg:
   commands:
     conventional:
-      run: |
-        msg=$(head -1 {1})
-        if [[ ! "$msg" =~ ^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?\!?:\ .+ ]]; then
-          echo "Commit message must follow Conventional Commits format:"
-          echo "  <type>(<optional scope>): <description>"
-          echo "  Types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert"
-          echo ""
-          echo "Examples:"
-          echo "  feat(auth): add OAuth2 support"
-          echo "  fix: resolve null pointer exception"
-          exit 1
-        fi
+      run: bun scripts/check-commit-message.ts {1}
 
 pre-commit:
   commands:
@@ -24,16 +13,7 @@ pre-commit:
     file-length:
       glob: "*.{ts,tsx}"
       exclude: "*.{test,spec,d}.ts|*.{test,spec}.tsx|**/__tests__/**|**/tests/**|**/*.generated.*"
-      run: |
-        for file in {staged_files}; do
-          if [[ -f "$file" ]]; then
-            lines=$(wc -l < "$file" | tr -d ' ')
-            if [[ $lines -gt 400 ]]; then
-              echo "⚠️  Warning: $file has $lines lines (threshold: 400)"
-              echo "   Consider splitting this file if it has multiple responsibilities."
-            fi
-          fi
-        done
+      run: bun scripts/check-file-length.ts {staged_files}
 
 pre-push:
   commands:
