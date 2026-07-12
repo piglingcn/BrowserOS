@@ -1,26 +1,46 @@
-export function buildDouyinWorkflowPrompt(request: string): string {
-  const searchKeyword = request.trim()
-  const searchUrl = `https://www.douyin.com/search/${encodeURIComponent(searchKeyword)}?type=video`
+export function buildDouyinWorkflowPrompt(
+  request: string,
+  includeDiagnostics = true,
+): string {
+  const diagnosticsSection = includeDiagnostics
+    ? `
 
-  return `请执行抖音热门视频 Top 2 数据采集任务。
+调试输出：
+- 任务结束后，额外输出“工作流诊断记录”
+- 记录本次最终成功的最短操作路径
+- 逐步记录使用的工具、目标元素语义和判断成功的依据
+- 记录失败尝试、失败原因、重试次数和恢复方式
+- 记录搜索页、筛选面板、详情页及底部互动栏实际观察到的稳定特征
+- 记录候选数量、详情页成功数、重试成功数、最终失败数及失败原因
+- 记录点赞、评论、收藏、转发四项数据的实际定位和对应依据
+- 最后列出建议加入下一版提示词的明确规则
+- 不记录 Cookie、Token、签名参数、个人信息或完整页面源码`
+    : ''
 
-用户搜索词：${searchKeyword}
-视频搜索地址：${searchUrl}
+  return `请执行抖音热门视频数据采集任务。
+
+用户需求：${request.trim()}
+
+开始操作前，先从用户需求中提取：
+- searchKeyword：要搜索的视频关键词
+- targetCount：要采集的视频数量；用户没有指定数量时固定使用 50
+- searchUrl：https://www.douyin.com/search/<URL编码后的searchKeyword>?type=video
+- 先确认以上三个值，再开始浏览器操作
 
 范围限制：
 - 只采集结构化数据，不获取或保存视频文件
 - 不读取 video.src，不处理媒体 Blob，不执行 curl，不返回 base64
-- 固定采集排序后的前 2 个视频，不要超过 2 个
+- 固定采集排序后的前 targetCount 个视频，不要超过 targetCount 个
 - 一次只处理一个视频；当前视频记录完成后再处理下一个
 - 遇到登录页、验证码或风控验证时立即暂停，请用户手动处理
 
 执行步骤：
-1. 直接打开上面的“视频搜索地址”，等待视频搜索结果加载完成并确认用户已登录。不要打开抖音首页，不要点击“视频”标签，也不要再次填写搜索框。
+1. 直接打开 searchUrl，等待视频搜索结果加载完成并确认用户已登录。不要打开抖音首页，不要点击“视频”标签，也不要再次填写搜索框。
 2. 重新 snapshot，找到视频结果区域旁边可见文字为“筛选”的按钮 ref，必须使用 act(kind="click", ref=该ref) 点击。不要使用 evaluate 模拟点击，也不要跳过“筛选”。
 3. 等待筛选面板出现并重新 snapshot。在面板中找到“排序依据”，选择“最多点赞”。如果面板有“确定”“确认”或“完成”按钮，点击它提交筛选。
 4. 等待结果列表重新加载。再次 snapshot，确认页面或筛选面板显示“最多点赞”已选中；没有确认成功时停止并报告，禁止继续采集默认排序结果。
 5. 将当前搜索结果页的 page ID 记录为 listPage，整个采集过程不得关闭或跳转这个页签。使用 run/evaluate 从 listPage 的 DOM 中提取 href 包含 /video/ 的链接，转换成绝对地址并去重。标题优先读取链接附近的可见文字、aria-label 或 title。
-6. 如果当前可见 DOM 不足 2 条，始终在 listPage 中缓慢向下滚动一屏，等待新结果出现后再次提取；只保留页面顺序中的前 2 个唯一链接。候选列表达到 2 条后停止滚动。
+6. 如果当前可见 DOM 不足 targetCount 条，始终在 listPage 中缓慢向下滚动一屏，等待新结果出现后再次提取；只保留页面顺序中的前 targetCount 个唯一链接。候选列表达到 targetCount 条后停止滚动。
 7. 再按候选列表顺序逐条补齐数据。每条记录：
    - 序号
    - 视频名称
@@ -39,14 +59,14 @@ export function buildDouyinWorkflowPrompt(request: string): string {
 - 优先使用 run/evaluate 一次返回当前页面的结构化 JSON，避免反复截图和大段 DOM
 - 每条详情固定执行：new_page -> 读取并记录 -> close_page -> show_page(listPage)，确认回到列表后再继续
 - 数量字段同时保留页面原始文本和可解析的整数值；无法确认时填 null，不要猜测
-- 候选列表建立后先报告“已找到 N/2 条”；每完成 1 个视频报告一次简短进度
+- 候选列表建立后先报告“已找到 N/targetCount 条”；采集过程中定期报告简短进度
 - 必须保持“最多点赞”排序后的页面顺序，不要自行重新排序
 
 最终输出：
-- 生成一个 Markdown 文件，文件名为 douyin-top2-<关键词>-<日期>.md
-- 文件标题写“抖音热门视频 Top 2”，并注明关键词、采集时间和排序依据“最多点赞”
+- 生成一个 Markdown 文件，文件名为 douyin-top<targetCount>-<关键词>-<日期>.md
+- 文件标题写“抖音热门视频 Top <targetCount>”，并注明关键词、采集时间和排序依据“最多点赞”
 - 使用 Markdown 表格，列顺序固定为：序号、视频名称、视频链接、点赞数、评论数、收藏数、转发数
 - 视频名称作为链接文字，格式为 [视频名称](视频链接)
 - 表格后列出字段缺失或采集失败的视频及原因
-- 如果当前会话没有文件写入工具，则在对话中输出完整 Markdown，并明确说明未能写入文件`
+- 如果当前会话没有文件写入工具，则在对话中输出完整 Markdown，并明确说明未能写入文件${diagnosticsSection}`
 }

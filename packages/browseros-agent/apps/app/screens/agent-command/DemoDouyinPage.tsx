@@ -67,7 +67,7 @@ export const DemoDouyinPage: FC = () => {
               抖音热门视频
             </h1>
             <p className="text-muted-foreground text-xs leading-5">
-              按最多点赞采集前 2 条视频互动数据并导出 Markdown
+              按最多点赞采集视频互动数据，默认前 50 条
             </p>
           </div>
         </div>
@@ -102,7 +102,7 @@ export const DemoDouyinPage: FC = () => {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="输入搜索关键词，比如：美食探店"
+            placeholder="输入关键词和数量，比如：美食探店，前20条（默认50条）"
             className="min-h-[80px] w-full resize-none rounded-xl border border-border/50 bg-card px-4 py-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:border-border focus:border-pink-500"
             rows={2}
           />
