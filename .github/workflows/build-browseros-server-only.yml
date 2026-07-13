@@ -42,6 +42,17 @@ jobs:
             -replace 'bun-windows-x64-baseline', 'bun-windows-x64' `
             | Set-Content packages/build-server-tools/src/targets.ts
 
+      - name: Provide zip command on Windows
+        shell: powershell
+        run: |
+          $zipCmd = Join-Path $env:RUNNER_TEMP 'zip.cmd'
+          @'
+          @echo off
+          powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+            "param([string[]]$args) ; $dest = $args[0]; $sources = $args[1..($args.Length-1)] | Where-Object { $_ -ne $null -and $_ -ne '' }; if (Test-Path $dest) { Remove-Item $dest -Force }; Compress-Archive -Path $sources -DestinationPath $dest -Force"
+          '@ | Set-Content $zipCmd -Encoding ASCII
+          "$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Build BrowserOS Server
         run: bun scripts/build/server.ts --target=windows-x64 --ci --no-upload
 
