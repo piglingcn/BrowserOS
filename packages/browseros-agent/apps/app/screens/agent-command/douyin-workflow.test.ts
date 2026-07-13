@@ -2,18 +2,21 @@ import { describe, expect, it } from 'bun:test'
 import { buildDouyinWorkflowPrompt } from './douyin-workflow'
 
 describe('buildDouyinWorkflowPrompt', () => {
-  it('asks the assistant to extract the keyword and defaults to 50 results', () => {
+  it('asks the assistant to extract the keyword and defaults to 10 results', () => {
     const prompt = buildDouyinWorkflowPrompt('帮我采集美食探店视频')
 
     expect(prompt).toContain('用户需求：帮我采集美食探店视频')
     expect(prompt).toContain('searchKeyword：要搜索的视频关键词')
-    expect(prompt).toContain('用户没有指定数量时固定使用 50')
-    expect(prompt).toContain('<URL编码后的searchKeyword>?type=video')
-    expect(prompt).toContain('不要点击“视频”标签')
+    expect(prompt).toContain('用户没有指定数量时固定使用 10')
+    expect(prompt).toContain(
+      '<URL编码后的searchKeyword>?type=video&sort_type=1&publish_time=0',
+    )
     expect(prompt).toContain('不要再次填写搜索框')
-    expect(prompt).toContain('可见文字为“筛选”的按钮 ref')
-    expect(prompt).toContain('act(kind="click", ref=该ref)')
-    expect(prompt).toContain('确认页面或筛选面板显示“最多点赞”已选中')
+    expect(prompt).toContain('不要判断筛选面板状态')
+    expect(prompt).toContain('不要点击“视频”或“筛选”')
+    expect(prompt).toContain('searchUrl 已通过 sort_type=1 指定“最多点赞”')
+    expect(prompt).toContain('在当前活动页直接 navigate/goto 到 searchUrl')
+    expect(prompt).toContain('禁止使用 new_page 为搜索页新开标签')
     expect(prompt).toContain('href 包含 /video/ 的链接')
     expect(prompt).toContain('前 targetCount 个唯一链接')
     expect(prompt).toContain('记录为 listPage')
@@ -29,6 +32,15 @@ describe('buildDouyinWorkflowPrompt', () => {
     expect(prompt).toContain('转发数')
     expect(prompt).toContain('douyin-top<targetCount>-<关键词>-<日期>.md')
     expect(prompt).toContain('视频名称作为链接文字')
+    expect(prompt).toContain('必须获取一条就写入文件一条')
+    expect(prompt).toContain('在处理详情前创建 Markdown 结果文件')
+    expect(prompt).toContain('立即向结果文件追加一行 Markdown')
+    expect(prompt).toContain('禁止维护 results 数组')
+    expect(prompt).toContain('清除当前视频的临时字段')
+    expect(prompt).toContain('立刻关闭当前详情标签页')
+    expect(prompt).toContain('任何时刻最多只能存在 listPage 和一个详情页')
+    expect(prompt).toContain('仅视频详情允许 new_page')
+    expect(prompt).toContain('禁止在对话中再次输出完整 Markdown 表格')
     expect(prompt).not.toContain('单列')
     expect(prompt).not.toContain('currentSrc')
     expect(prompt).not.toContain('分片下载')
