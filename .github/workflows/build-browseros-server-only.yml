@@ -36,6 +36,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Patch Windows Bun target for CI
+        run: |
+          (Get-Content packages/build-server-tools/src/targets.ts) `
+            -replace 'bun-windows-x64-baseline', 'bun-windows-x64' `
+            | Set-Content packages/build-server-tools/src/targets.ts
+
       - name: Build BrowserOS Server
         run: bun scripts/build/server.ts --target=windows-x64 --ci --no-upload
 
