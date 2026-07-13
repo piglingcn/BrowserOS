@@ -20,6 +20,7 @@ describe('buildDouyinWorkflowPrompt', () => {
     expect(prompt).toContain('href 包含 /video/ 的链接')
     expect(prompt).toContain('前 targetCount 个唯一链接')
     expect(prompt).toContain('记录为 listPage')
+    expect(prompt).toContain('初始化一个轻量 results 数组')
     expect(prompt).toContain('new_page(url=候选链接)')
     expect(prompt).toContain('show_page(page=详情页ID)')
     expect(prompt).toContain('close_page(page=详情页ID)')
@@ -30,16 +31,23 @@ describe('buildDouyinWorkflowPrompt', () => {
     expect(prompt).toContain('评论总数')
     expect(prompt).toContain('收藏数')
     expect(prompt).toContain('转发数')
-    expect(prompt).toContain('douyin-top<targetCount>-<关键词>-<日期>.md')
-    expect(prompt).toContain('视频名称作为链接文字')
-    expect(prompt).toContain('必须获取一条就写入文件一条')
-    expect(prompt).toContain('在处理详情前创建 Markdown 结果文件')
-    expect(prompt).toContain('立即向结果文件追加一行 Markdown')
-    expect(prompt).toContain('禁止维护 results 数组')
-    expect(prompt).toContain('清除当前视频的临时字段')
-    expect(prompt).toContain('立刻关闭当前详情标签页')
+    expect(prompt).toContain('只把这一条的最终字段写入 results 数组')
+    expect(prompt).toContain('写入后立即丢弃当前详情页的临时 DOM')
+    expect(prompt).toContain('清除单条临时数据')
+    expect(prompt).toContain(
+      '立即调用 close_page(page=详情页ID) 关闭当前详情标签页',
+    )
     expect(prompt).toContain('任何时刻最多只能存在 listPage 和一个详情页')
     expect(prompt).toContain('仅视频详情允许 new_page')
+    expect(prompt).toContain(
+      '全部视频处理完成后，再生成 Markdown 文件 douyin-top<targetCount>-<关键词>-<日期-时分>.md',
+    )
+    expect(prompt).toContain('文件名中的时间至少精确到小时和分钟')
+    expect(prompt).toContain('视频名称作为链接文字')
+    expect(prompt).toContain(
+      '写文件前先根据 results 重新组装一份完整 Markdown 文本',
+    )
+    expect(prompt).toContain('禁止边采集边追加 Markdown')
     expect(prompt).toContain('禁止在对话中再次输出完整 Markdown 表格')
     expect(prompt).not.toContain('单列')
     expect(prompt).not.toContain('currentSrc')
